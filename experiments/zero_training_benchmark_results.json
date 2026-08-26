@@ -1,0 +1,36 @@
+{
+  "engine": "Zero-Training Hierarchical Forensic Profiler",
+  "classification": {
+    "top1_acc": 0.08133333333333333,
+    "top5_acc": 0.17133333333333334,
+    "macro_f1": 0.09604740908118949,
+    "latency_ms": 0.8154290666958938,
+    "throughput_fps": 1226.3482390344323
+  },
+  "reassembly": {
+    "3": {
+      "exact_seq_acc": 0.8,
+      "pairwise_adj_acc": 0.8,
+      "position_acc": 0.8666600000000001,
+      "byte_acc": 0.892
+    },
+    "5": {
+      "exact_seq_acc": 0.2,
+      "pairwise_adj_acc": 0.5,
+      "position_acc": 0.36,
+      "byte_acc": 0.5575
+    },
+    "10": {
+      "exact_seq_acc": 0.0,
+      "pairwise_adj_acc": 0.48888,
+      "position_acc": 0.06000000000000001,
+      "byte_acc": 0.26822
+    },
+    "20": {
+      "exact_seq_acc": 0.0,
+      "pairwise_adj_acc": 0.33684,
+      "position_acc": 0.07999999999999999,
+      "byte_acc": 0.29298
+    }
+  }
+}

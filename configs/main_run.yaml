@@ -1,0 +1,17 @@
+# Phase 2: Main Training Run Configuration
+# 2,000 samples/class (~150,000 samples), 3-5 epochs, Stage A -> Stage B unfreezing, early stopping.
+experiment_name: "phase2_main_run"
+seed: 42
+device: "cuda"
+samples_per_class: 2000
+fragment_size: 512
+img_size: 256
+batch_size: 64
+epochs: 5
+learning_rate: 8.0e-5
+weight_decay: 0.05
+label_smoothing: 0.05
+fine_tuning_stage: "B"
+early_stopping_patience: 3
+num_workers: 4
+output_dir: "experiments/phase2_main_run"

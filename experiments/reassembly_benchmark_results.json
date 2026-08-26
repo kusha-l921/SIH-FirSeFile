@@ -1,0 +1,30 @@
+{
+  "3": {
+    "exact_seq_acc": 1.0,
+    "pairwise_adj_acc": 1.0,
+    "position_acc": 1.0,
+    "byte_acc": 1.0,
+    "total_runs": 5
+  },
+  "5": {
+    "exact_seq_acc": 0.4,
+    "pairwise_adj_acc": 0.6,
+    "position_acc": 0.64,
+    "byte_acc": 0.63586,
+    "total_runs": 5
+  },
+  "10": {
+    "exact_seq_acc": 0.2,
+    "pairwise_adj_acc": 0.6444599999999999,
+    "position_acc": 0.28,
+    "byte_acc": 0.29847999999999997,
+    "total_runs": 5
+  },
+  "20": {
+    "exact_seq_acc": 0.2,
+    "pairwise_adj_acc": 0.38948,
+    "position_acc": 0.26,
+    "byte_acc": 0.27886,
+    "total_runs": 5
+  }
+}

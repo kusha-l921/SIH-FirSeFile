@@ -1,0 +1,17 @@
+# Phase 1: Pilot Run Configuration
+# 1,000 samples/class (~75,000 samples), 2-3 epochs, fine-tuning Stage A (Head + upper Swin blocks).
+experiment_name: "phase1_pilot_run"
+seed: 42
+device: "cuda"
+samples_per_class: 1000
+fragment_size: 512
+img_size: 256
+batch_size: 64
+epochs: 3
+learning_rate: 1.0e-4
+weight_decay: 0.05
+label_smoothing: 0.05
+fine_tuning_stage: "A"
+early_stopping_patience: 2
+num_workers: 2
+output_dir: "experiments/phase1_pilot_run"

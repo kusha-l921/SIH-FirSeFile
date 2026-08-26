@@ -1,0 +1,16 @@
+# Phase 0: Smoke Test Configuration
+# Rapid sanity check of dataset, Byte2Image conversion, Swin V2 forward/backward, and checkpointing.
+experiment_name: "phase0_smoke_test"
+seed: 42
+device: "cuda"  # Auto-falls back to CPU if CUDA unavailable
+samples_per_class: 50
+fragment_size: 512
+img_size: 256
+batch_size: 16
+epochs: 1
+learning_rate: 1.0e-4
+weight_decay: 0.05
+fine_tuning_stage: "A"
+early_stopping_patience: 2
+num_workers: 0
+output_dir: "experiments/phase0_smoke_test"
