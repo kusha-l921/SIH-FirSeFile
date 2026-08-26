@@ -195,6 +195,32 @@ impl<R: ImageRead> RecoveryEngine<R> {
         )
     }
 
+    pub fn sha256_image(&mut self) -> Result<String> {
+        crate::recovery::hash::sha256_image(&mut self.reader)
+    }
+
+    pub fn sha256_candidate_content(
+        &mut self,
+        candidate: &RecoveryCandidate,
+    ) -> Result<crate::recovery::hash::ContentHash> {
+        crate::recovery::hash::sha256_candidate_content(
+            &mut self.reader,
+            self.options.base_offset,
+            &self.geometry,
+            candidate,
+        )
+    }
+
+    pub fn candidate_handoff(
+        &mut self,
+        candidate: &RecoveryCandidate,
+    ) -> Result<crate::recovery::hash::CandidateHandoff> {
+        let hash = self.sha256_candidate_content(candidate).ok();
+        Ok(crate::recovery::hash::CandidateHandoff::new(
+            candidate, hash,
+        ))
+    }
+
     pub fn into_reader(self) -> R {
         self.reader
     }

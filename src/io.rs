@@ -8,6 +8,10 @@ const O_NOATIME: i32 = 0o1000000;
 
 pub trait ImageRead {
     fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<()>;
+
+    fn image_len(&self) -> Option<u64> {
+        None
+    }
 }
 
 fn check_bounds(image_len: u64, offset: u64, requested: usize) -> Result<()> {
@@ -72,6 +76,10 @@ impl ImageRead for FileImage {
         self.file.read_exact(buf)?;
         Ok(())
     }
+
+    fn image_len(&self) -> Option<u64> {
+        Some(self.image_len)
+    }
 }
 
 #[derive(Debug)]
@@ -99,6 +107,10 @@ impl ImageRead for MemImage<'_> {
         let start = offset as usize;
         buf.copy_from_slice(&self.data[start..start + buf.len()]);
         Ok(())
+    }
+
+    fn image_len(&self) -> Option<u64> {
+        Some(self.data.len() as u64)
     }
 }
 

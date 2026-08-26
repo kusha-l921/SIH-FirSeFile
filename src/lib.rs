@@ -52,12 +52,15 @@ pub use api::{FsInfo, RecoveryEngine, RecoveryOptions};
 pub use error::{Error, Result};
 pub use io::{FileImage, ImageRead, MemImage};
 pub use recovery::{
-    CandidateClass, RecoveryCandidate, RecoveryConfidence, RecoveryEvidence, RecoveryMethod,
-    RecoveryReport, RecoverySummary, Rejection, RejectionReason, classify_inode_candidate,
-    collect_recovery_candidates,
+    CandidateClass, CandidateHandoff, ContentHash, RecoveryCandidate, RecoveryConfidence,
+    RecoveryEvidence, RecoveryMethod, RecoveryReport, RecoverySummary, Rejection, RejectionReason,
+    classify_inode_candidate, collect_recovery_candidates, sha256_candidate_content, sha256_image,
 };
+
 pub use util::be::{be_u16, be_u16_at, be_u32, be_u32_at, be_u64, be_u64_at};
 pub use util::crc32c::crc32c;
+pub use util::sha256::{Sha256, sha256_digest, sha256_hex};
+
 pub use xfs::superblock::{CrcStatus, Geometry, Superblock, SuperblockIssue};
 pub use xfs::{
     AgFreeSpace, AgHeaderOffsets, AgIssue, Agf, Agfl, Agi, AllocBtreeKind, AllocRecordIssue,
