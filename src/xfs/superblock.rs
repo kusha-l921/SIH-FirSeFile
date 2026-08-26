@@ -1,7 +1,6 @@
 use crate::error::{Error, Result};
 use crate::io::ImageRead;
 use crate::util::be::{be_u16_at, be_u32_at, be_u64_at};
-use crate::util::crc32c::crc32c;
 
 pub const SUPERBLOCK_SECTOR_BYTES: usize = 512;
 
@@ -721,10 +720,7 @@ fn malformed(reason: &'static str) -> Error {
 
 fn compute_sb_crc(sector: &[u8], sector_size: usize) -> u32 {
     let coverage = sector_size.min(sector.len());
-    let mut scratch = vec![0u8; coverage];
-    scratch.copy_from_slice(&sector[..coverage]);
-    scratch[OFF_CRC..OFF_CRC + 4].fill(0);
-    crc32c(&scratch)
+    crate::util::crc32c::crc32c_with_zeroed_range(&sector[..coverage], OFF_CRC, 4)
 }
 
 fn log_matches(value: u64, log: u8) -> bool {
@@ -794,9 +790,15 @@ fn validate_ag_geometry(
 }
 
 #[cfg(test)]
+pub(crate) mod testing {
+    pub(crate) use super::tests::{golden_v4, golden_v5, put32, put64};
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::MemImage;
+    use crate::util::crc32c::crc32c;
 
     const BS: u32 = 4096;
     const INODE_SIZE: u16 = 512;
@@ -806,23 +808,23 @@ mod tests {
     const V4_FLAGS: u16 = 0xBD74;
     const F2_CLEAN: u32 = FEAT2_LAZYSBCOUNT | FEAT2_ATTR2 | FEAT2_FTYPE;
 
-    fn put16(dst: &mut [u8], off: usize, v: u16) {
+    pub(crate) fn put16(dst: &mut [u8], off: usize, v: u16) {
         dst[off..off + 2].copy_from_slice(&v.to_be_bytes());
     }
 
-    fn put32(dst: &mut [u8], off: usize, v: u32) {
+    pub(crate) fn put32(dst: &mut [u8], off: usize, v: u32) {
         dst[off..off + 4].copy_from_slice(&v.to_be_bytes());
     }
 
-    fn put32le(dst: &mut [u8], off: usize, v: u32) {
+    pub(crate) fn put32le(dst: &mut [u8], off: usize, v: u32) {
         dst[off..off + 4].copy_from_slice(&v.to_le_bytes());
     }
 
-    fn put64(dst: &mut [u8], off: usize, v: u64) {
+    pub(crate) fn put64(dst: &mut [u8], off: usize, v: u64) {
         dst[off..off + 8].copy_from_slice(&v.to_be_bytes());
     }
 
-    fn golden_v4() -> [u8; SUPERBLOCK_SECTOR_BYTES] {
+    pub(crate) fn golden_v4() -> [u8; SUPERBLOCK_SECTOR_BYTES] {
         let mut b = [0u8; SUPERBLOCK_SECTOR_BYTES];
         put32(&mut b, OFF_MAGIC, MAGIC);
         put32(&mut b, OFF_BLOCKSIZE, BS);
@@ -845,14 +847,14 @@ mod tests {
         b
     }
 
-    fn seal_crc(b: &mut [u8], sector_size: usize) {
+    pub(crate) fn seal_crc(b: &mut [u8], sector_size: usize) {
         b[OFF_CRC..OFF_CRC + 4].copy_from_slice(&0u32.to_le_bytes());
         let coverage = sector_size.min(b.len());
         let crc = crc32c(&b[..coverage]);
         put32le(b, OFF_CRC, crc);
     }
 
-    fn golden_v5() -> [u8; SUPERBLOCK_SECTOR_BYTES] {
+    pub(crate) fn golden_v5() -> [u8; SUPERBLOCK_SECTOR_BYTES] {
         let mut b = golden_v4();
         put16(&mut b, OFF_VERSIONNUM, V4_FLAGS | 1);
         put32(&mut b, OFF_FEATURES2, F2_CLEAN | FEAT2_CRC);

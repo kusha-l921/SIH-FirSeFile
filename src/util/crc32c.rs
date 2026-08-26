@@ -28,6 +28,15 @@ pub fn crc32c(data: &[u8]) -> u32 {
     !crc
 }
 
+pub fn crc32c_with_zeroed_range(data: &[u8], start: usize, len: usize) -> u32 {
+    if start.saturating_add(len) > data.len() {
+        return crc32c(data);
+    }
+    let mut scratch = data.to_vec();
+    scratch[start..start + len].fill(0);
+    crc32c(&scratch)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
