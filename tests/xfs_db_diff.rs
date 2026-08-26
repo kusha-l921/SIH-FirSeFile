@@ -605,3 +605,137 @@ fn differential_dinode_parsing_against_xfs_db_fixture() {
         }
     }
 }
+
+fn parse_xfs_db_bmap(text: &str) -> Vec<(u64, u64, u64, u8)> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with("data offset") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let mut offset = None;
+            let mut startblock = None;
+            let mut count = None;
+            let mut flag = 0u8;
+
+            let mut i = 0;
+            while i < parts.len() {
+                if parts[i] == "offset" && i + 1 < parts.len() {
+                    offset = parts[i + 1].parse::<u64>().ok();
+                    i += 2;
+                } else if parts[i] == "startblock" && i + 1 < parts.len() {
+                    startblock = parts[i + 1].parse::<u64>().ok();
+                    i += 2;
+                } else if parts[i] == "count" && i + 1 < parts.len() {
+                    count = parts[i + 1].parse::<u64>().ok();
+                    i += 2;
+                } else if parts[i] == "flag" && i + 1 < parts.len() {
+                    flag = parts[i + 1].parse::<u8>().unwrap_or(0);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+
+            if let (Some(o), Some(sb), Some(c)) = (offset, startblock, count) {
+                out.push((o, sb, c, flag));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+#[ignore]
+fn differential_extent_extraction_against_xfs_db_fixture() {
+    use xfs_recovery_engine::{
+        DataForkFormat, DiscoveryOptions, ExtentReader, ExtentState, FileType, SlotState, WalkMode,
+        collect_inode_allocation, discover_inode_slots, parse_data_fork, parse_dinode,
+    };
+
+    let Some(image) = std::env::var_os("XRE_TEST_IMAGE") else {
+        eprintln!("skipped: set XRE_TEST_IMAGE=<raw xfs image path>");
+        return;
+    };
+    if !xfs_db_available() {
+        eprintln!("skipped: xfs_db not installed");
+        return;
+    }
+
+    let mut file = FileImage::open(&image).expect("open image");
+    let (sb, geo) = Superblock::parse(&mut file, 0).expect("parse sb");
+
+    for ag in 0..sb.ag_count {
+        let map = collect_inode_allocation(&mut file, 0, &sb, &geo, ag, WalkMode::Strict)
+            .unwrap_or_else(|e| panic!("collect inobt ag {ag}: {e}"));
+        let found = discover_inode_slots(&map, &sb, &geo, &DiscoveryOptions::default())
+            .expect("discover slots");
+
+        for d in found.iter().filter(|d| d.state == SlotState::Allocated) {
+            let dinode = parse_dinode(&mut file, 0, &sb, &d.location).expect("parse dinode");
+            if dinode.core.format != DataForkFormat::Extents
+                && dinode.core.format != DataForkFormat::Btree
+            {
+                continue;
+            }
+
+            let ext_map =
+                parse_data_fork(&mut file, 0, &sb, &geo, &dinode).expect("parse data fork");
+
+            let out = std::process::Command::new("xfs_db")
+                .args(["-r", "-f"])
+                .arg(&image)
+                .args(["-c", &format!("inode {}", d.location.ino), "-c", "bmap"])
+                .output()
+                .expect("run xfs_db bmap");
+
+            assert!(out.status.success(), "xfs_db bmap failed");
+            let text = String::from_utf8_lossy(&out.stdout);
+            let expected_bmaps = parse_xfs_db_bmap(&text);
+
+            assert_eq!(
+                ext_map.extents.len(),
+                expected_bmaps.len(),
+                "inode {} extent count mismatch",
+                d.location.ino
+            );
+
+            for (i, (exp_off, exp_sb, exp_cnt, exp_flag)) in expected_bmaps.into_iter().enumerate()
+            {
+                let actual = &ext_map.extents[i];
+                assert_eq!(
+                    actual.logical_start, exp_off,
+                    "inode {} extent {} logical_start mismatch",
+                    d.location.ino, i
+                );
+                assert_eq!(
+                    actual.physical_start, exp_sb,
+                    "inode {} extent {} physical_start mismatch",
+                    d.location.ino, i
+                );
+                assert_eq!(
+                    actual.block_count, exp_cnt,
+                    "inode {} extent {} block_count mismatch",
+                    d.location.ino, i
+                );
+
+                let expected_state = if exp_flag != 0 {
+                    ExtentState::Unwritten
+                } else {
+                    ExtentState::Normal
+                };
+                assert_eq!(
+                    actual.state, expected_state,
+                    "inode {} extent {} state mismatch",
+                    d.location.ino, i
+                );
+            }
+
+            if dinode.core.file_type == FileType::RegularFile && dinode.core.size > 0 {
+                let mut reader =
+                    ExtentReader::new(&mut file, 0, &geo, &ext_map.extents, dinode.core.size);
+                let content = reader.read_all().expect("read content");
+                assert_eq!(content.len() as u64, dinode.core.size);
+            }
+        }
+    }
+}

@@ -2,6 +2,8 @@ pub mod ag;
 pub mod alloc_records;
 pub mod btree;
 pub mod dinode;
+pub mod extents;
+pub mod fork;
 pub mod inode_addr;
 pub mod inode_scan;
 pub mod superblock;
@@ -26,6 +28,12 @@ pub use dinode::{
     AttrForkFormat, DataForkFormat, Dinode, DinodeCore, DinodeIssue, FileType, Timestamp,
     parse_dinode, parse_dinode_core, parse_dinode_from_bytes,
 };
+pub use extents::{
+    ExtentIssue, ExtentMap, ExtentReader, ExtentState, FileExtent, ResidualConfidence,
+    ResidualInterpretation, decode_bmbt_record, encode_bmbt_record, interpret_residual_extents,
+    parse_data_fork,
+};
+pub use fork::{AttrForkRegion, ForkRegion, attr_fork_region, data_fork_region, local_data_bytes};
 pub use inode_addr::{
     DiscoveredInode, InodeLocation, NULLAGINO, absolute_inode, ag_first_inode,
     inodes_per_ag_addressable, locate_inode,
