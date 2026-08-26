@@ -20,7 +20,12 @@ Gui_CLI/node_modules
 Gui_CLI/dist
 Gui_CLI/src-tauri/gen
 
-# Test images
+# Test images & outputs
 tests/fixtures/*.img
 tests/fixtures/*.dd
 tests/fixtures/*.raw
+recovered_files/
+recovered_xfs_output/
+recovered_btrfs_output/
+*.jsonl
+

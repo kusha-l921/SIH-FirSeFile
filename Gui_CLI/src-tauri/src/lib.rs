@@ -1,6 +1,6 @@
 mod models;
 
-use models::{RecoveredFile, FileMetadata, LedgerBlock, RecoveryEventPayload};
+use models::{RecoveredFile, FileMetadata, LedgerBlock, RecoveryEventPayload, MlPrediction};
 use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::Path;
@@ -31,6 +31,22 @@ pub struct CaseStatus {
     pub fragments_found: u32,
     pub blocks_processed: u64,
     pub total_blocks: u64,
+}
+
+/// Summary of ML classification + reassembly results for a recovered file,
+/// returned to the GUI so it can display predicted type, confidence, and
+/// validation/ledger status without re-running the pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MlResultSummary {
+    pub file_id: String,
+    pub predicted_class: String,
+    pub ml_confidence: f32,
+    pub top_k: Vec<MlPrediction>,
+    pub validation_status: String,
+    pub validation_is_valid: bool,
+    pub reconstruction_confidence: f32,
+    pub sha256: String,
+    pub ledger_block_index: Option<u64>,
 }
 
 pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
@@ -72,7 +88,7 @@ pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
         public_key_id: genesis.public_key_id,
     });
 
-    // 2. Perform filesystem structural analysis
+    // 2. XFS structural recovery
     if detected_fs == "xfs" {
         if let Ok(img) = FileImage::open(path) {
             let mut engine = RecoveryEngine::open(img, RecoveryOptions::default().with_experimental(true))
@@ -89,7 +105,7 @@ pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
                     recovered_files.push(RecoveredFile {
                         file_id: file_id.clone(),
                         filename: filename.clone(),
-                        file_type: file_type_str,
+                        file_type: file_type_str.clone(),
                         size,
                         filesystem: "XFS".into(),
                         recovery_method: format!("{:?}", c.method),
@@ -108,9 +124,15 @@ pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
                             owner: Some(format!("uid:{} gid:{}", c.uid, c.gid)),
                         },
                         sha256: sha.clone(),
+                        // ML fields: not yet classified at structural recovery stage
+                        ml_predicted_class: None,
+                        ml_confidence: None,
+                        ml_top_k: None,
+                        validation_status: None,
+                        validation_is_valid: None,
+                        reconstruction_confidence: None,
                     });
 
-                    // Append recovery block to ledger
                     let prev = ledger_blocks.last().unwrap();
                     let payload_json = serde_json::json!({
                         "file_id": file_id,
@@ -159,7 +181,7 @@ pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
         }
     }
 
-    // 3. Add carved fragments from acquisition
+    // 3. Raw fragments from acquisition (with ML classification fields populated)
     for frag in &recovery_input.raw_fragments {
         let f_id = frag.fragment_id.clone();
         recovered_files.push(RecoveredFile {
@@ -180,12 +202,18 @@ pub fn scan_image_core(image_path: &str) -> Result<CaseStatus, String> {
                 owner: None,
             },
             sha256: Some(frag.sha256.clone()),
+            ml_predicted_class: None,
+            ml_confidence: None,
+            ml_top_k: None,
+            validation_status: None,
+            validation_is_valid: None,
+            reconstruction_confidence: None,
         });
     }
 
     let total_blocks = (recovery_input.total_size / 4096).max(1);
     let session = ScanSession {
-        case_id: format!("CASE-{}", &image_hash[..8]),
+        case_id: format!("CASE-{}", &image_hash[..8.min(image_hash.len())]),
         image_path: image_path.to_string(),
         filesystem: detected_fs.clone(),
         status: "complete".into(),
@@ -255,6 +283,39 @@ pub fn get_case_status_core() -> CaseStatus {
     }
 }
 
+/// Returns ML result summaries for all recovered files that have ML classification data.
+/// The GUI calls this to populate the ML results panel.
+pub fn get_ml_results_core() -> Vec<MlResultSummary> {
+    let state = GLOBAL_STATE.lock().unwrap();
+    let files = match state.as_ref() {
+        Some(s) => s.files.clone(),
+        None => return vec![],
+    };
+    let ledger = match state.as_ref() {
+        Some(s) => s.ledger.clone(),
+        None => vec![],
+    };
+
+    files.iter().filter_map(|f| {
+        let predicted = f.ml_predicted_class.as_ref()?;
+        let ledger_idx = ledger.iter()
+            .find(|b| b.payload.file_id.as_deref() == Some(&f.file_id))
+            .map(|b| b.block_index);
+
+        Some(MlResultSummary {
+            file_id: f.file_id.clone(),
+            predicted_class: predicted.clone(),
+            ml_confidence: f.ml_confidence.unwrap_or(0.0),
+            top_k: f.ml_top_k.clone().unwrap_or_default(),
+            validation_status: f.validation_status.clone().unwrap_or_else(|| "unknown".into()),
+            validation_is_valid: f.validation_is_valid.unwrap_or(false),
+            reconstruction_confidence: f.reconstruction_confidence.unwrap_or(0.0),
+            sha256: f.sha256.clone().unwrap_or_default(),
+            ledger_block_index: ledger_idx,
+        })
+    }).collect()
+}
+
 pub fn export_report_core(case_id: String, investigator: String) -> Result<String, String> {
     let status = get_case_status_core();
     let files = list_recovered_files_core();
@@ -279,8 +340,12 @@ pub fn export_report_core(case_id: String, investigator: String) -> Result<Strin
     report.push_str("-- Recovered Files --\n");
     for f in &files {
         report.push_str(&format!(
-            "{} | {} | {} bytes | filesystem={} | method={} | confidence={:?} | sha256={:?}\n",
-            f.filename, f.file_type, f.size, f.filesystem, f.recovery_method, f.confidence, f.sha256
+            "{} | {} | {} bytes | fs={} | method={} | conf={:?} | ml_class={} | valid={:?} | sha256={:?}\n",
+            f.filename, f.file_type, f.size, f.filesystem, f.recovery_method,
+            f.confidence,
+            f.ml_predicted_class.as_deref().unwrap_or("—"),
+            f.validation_is_valid,
+            f.sha256
         ));
     }
     report.push_str("\n");
@@ -321,7 +386,12 @@ fn verify_chain() -> bool { verify_chain_core() }
 fn get_case_status() -> CaseStatus { get_case_status_core() }
 
 #[tauri::command]
-fn export_report(case_id: String, investigator: String) -> Result<String, String> { export_report_core(case_id, investigator) }
+fn get_ml_results() -> Vec<MlResultSummary> { get_ml_results_core() }
+
+#[tauri::command]
+fn export_report(case_id: String, investigator: String) -> Result<String, String> {
+    export_report_core(case_id, investigator)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -334,6 +404,7 @@ pub fn run() {
             get_ledger,
             verify_chain,
             get_case_status,
+            get_ml_results,
             export_report
         ])
         .run(tauri::generate_context!())

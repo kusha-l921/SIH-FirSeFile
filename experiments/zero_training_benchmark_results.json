@@ -4,8 +4,8 @@
     "top1_acc": 0.08133333333333333,
     "top5_acc": 0.17133333333333334,
     "macro_f1": 0.09604740908118949,
-    "latency_ms": 0.8154290666958938,
-    "throughput_fps": 1226.3482390344323
+    "latency_ms": 1.057093600044027,
+    "throughput_fps": 945.9900239282036
   },
   "reassembly": {
     "3": {
@@ -24,13 +24,13 @@
       "exact_seq_acc": 0.0,
       "pairwise_adj_acc": 0.48888,
       "position_acc": 0.06000000000000001,
-      "byte_acc": 0.26822
+      "byte_acc": 0.26818
     },
     "20": {
       "exact_seq_acc": 0.0,
       "pairwise_adj_acc": 0.33684,
       "position_acc": 0.07999999999999999,
-      "byte_acc": 0.29298
+      "byte_acc": 0.29296
     }
   }
 }

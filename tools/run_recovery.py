@@ -27,7 +27,7 @@ import hashlib
 import argparse
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -36,6 +36,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.validation.validator import validate_reconstructed_file
 from src.recovery.btrfs.btrfs_engine import BtrfsEngine, FILE_SIGNATURES
 from src.models.zero_training_classifier import ZeroTrainingClassifier
+import blockchain_ledger
+from src.ml_pipeline import (
+    FragmentInput, run_ml_pipeline, classify_fragment,
+    build_fragment_nodes, reassemble_fragments, validate_reconstruction,
+    build_ledger_payload,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -143,36 +149,26 @@ class XfsForensicScanner:
 
 
 # ---------------------------------------------------------------------------
-# Simple Standalone Forensic Ledger
-# (Matches the Rust blockchain_ledger_core logic for cryptographic custody)
+# Cryptographic Forensic Ledger (Ed25519 Signed & Chained)
 # ---------------------------------------------------------------------------
 
 class ForensicLedger:
     """
     Append-only cryptographic ledger tracking forensic recovery provenance.
-    Links each block via SHA-256 hash chaining.
+    Links each block via SHA-256 hash chaining and signs each block with Ed25519.
     """
 
     def __init__(self, chain_path: Optional[Path] = None):
         self.chain_path = chain_path
         self.blocks: List[Dict[str, Any]] = []
+        self.priv_key, self.pub_key, _ = blockchain_ledger.load_or_generate_keypair()
 
     def init_chain(self, image_path: Path, image_hash: str) -> Dict[str, Any]:
-        genesis = {
-            "block_type": "genesis",
-            "block_index": 0,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "file_id": "GENESIS",
-            "prev_hash": "0" * 64,
-            "payload": {
-                "evidence_image": str(image_path),
-                "image_sha256": image_hash,
-                "tool": "FirSeFile Forensic Recovery Engine v1.0",
-            },
-        }
-        block_bytes = json.dumps(genesis, sort_keys=True).encode("utf-8")
-        genesis["block_hash"] = hashlib.sha256(block_bytes).hexdigest()
-        genesis["public_key_id"] = "operator_key_default"
+        genesis = blockchain_ledger.create_genesis(
+            disk_baseline_sha256=image_hash,
+            operator_pubkey_hex=self.pub_key,
+            signing_key_hex=self.priv_key,
+        )
         self.blocks.append(genesis)
         self._persist_block(genesis)
         return genesis
@@ -185,31 +181,34 @@ class ForensicLedger:
         size_bytes: int,
         metadata: Dict[str, Any],
     ) -> Dict[str, Any]:
-        prev_hash = self.blocks[-1]["block_hash"] if self.blocks else "0" * 64
-        block = {
-            "block_type": "full_recovery",
-            "block_index": len(self.blocks),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "file_id": file_id,
-            "prev_hash": prev_hash,
-            "payload": {
-                "recovery_method": recovery_method,
-                "recovered_sha256": file_sha256,
-                "size_bytes": size_bytes,
-                "metadata": metadata,
+        prev_block = self.blocks[-1]
+        payload = {
+            "filename": metadata.get("filename", f"{file_id}.bin"),
+            "macb_timestamps": {
+                "modified": metadata.get("modified"),
+                "accessed": metadata.get("accessed"),
+                "created": metadata.get("created"),
             },
+            "recovered_file_sha256": file_sha256 if file_sha256 != "none" else hashlib.sha256(b"").hexdigest(),
+            "size": size_bytes,
+            "source_location": str(metadata.get("source_locations", ["0"])[0] if metadata.get("source_locations") else "0"),
+            "recovery_method": recovery_method,
         }
-        block_bytes = json.dumps(block, sort_keys=True).encode("utf-8")
-        block["block_hash"] = hashlib.sha256(block_bytes).hexdigest()
-        block["public_key_id"] = "operator_key_default"
+        block = blockchain_ledger.log_action(
+            block_type="full_recovery",
+            payload=payload,
+            file_id=file_id,
+            prev_block=prev_block,
+            signing_key_hex=self.priv_key,
+        )
         self.blocks.append(block)
         self._persist_block(block)
         return block
 
     def _persist_block(self, block: Dict[str, Any]):
         if self.chain_path:
-            with open(self.chain_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(block) + "\n")
+            blockchain_ledger.append_block(block, str(self.chain_path))
+
 
 
 # ---------------------------------------------------------------------------
@@ -281,10 +280,13 @@ def run_forensic_pipeline(
                     metadata=f["metadata"],
                 )
 
-    # 5. Carving Fallback Phase (if needed or in unallocated space)
-    # Extract file signatures from unallocated regions
-    classifier = ZeroTrainingClassifier()
+    # 5. Carving + ML Classification Phase
+    # Extract file signatures from unallocated regions, classify each 512-byte
+    # fragment with the ML pipeline, then reassemble grouped fragments.
     chunk_size = 1024 * 1024
+    carved_fragments: List[FragmentInput] = []
+    carved_raw_map: Dict[str, bytes] = {}  # fragment_id -> full carved bytes
+
     for chunk_offset in range(0, image_size, chunk_size):
         chunk = image_data[chunk_offset:chunk_offset + chunk_size]
         for ftype, sig in FILE_SIGNATURES.items():
@@ -297,7 +299,6 @@ def run_forensic_pipeline(
                     break
 
                 abs_offset = chunk_offset + pos
-                # Check if this offset is already covered by structural recovery
                 already_covered = any(abs_offset in f.get("source_locations", []) for f in recovered_files)
 
                 if not already_covered:
@@ -308,42 +309,78 @@ def run_forensic_pipeline(
                         end = min(pos + 65536, len(chunk))
 
                     carved_bytes = chunk[pos:end]
-                    val_report = validate_reconstructed_file(carved_bytes, expected_format=ftype)
-
-                    if val_report.is_valid:
-                        file_id = f"carved:0x{abs_offset:x}"
-                        carved_entry = {
-                            "file_id": file_id,
-                            "filename": f"carved_0x{abs_offset:x}.{val_report.detected_format}",
-                            "file_type": val_report.detected_format,
-                            "file_size": len(carved_bytes),
-                            "reconstructed_bytes": carved_bytes,
-                            "metadata": {
-                                "filename": f"carved_0x{abs_offset:x}.{val_report.detected_format}",
-                                "file_size": len(carved_bytes),
-                                "deleted_if_available": True,
-                                "permissions": "-rw-r--r--",
-                                "ownership": {"uid": 0, "gid": 0},
-                                "filesystem": detected_fs,
-                                "source_locations": [abs_offset],
-                                "additional_attributes": {"validation_status": val_report.status},
-                            },
-                            "source_locations": [abs_offset],
-                            "recovery_method": "fragment_carving",
-                            "confidence": 0.85,
-                            "sha256": val_report.sha256,
-                            "validation": val_report.to_dict(),
-                        }
-                        recovered_files.append(carved_entry)
-                        ledger.record_recovery(
-                            file_id=file_id,
-                            recovery_method="fragment_carving",
-                            file_sha256=val_report.sha256,
-                            size_bytes=len(carved_bytes),
-                            metadata=carved_entry["metadata"],
-                        )
+                    frag_id = f"carved:0x{abs_offset:x}"
+                    # Use first 512 bytes for ML classification
+                    carved_fragments.append(FragmentInput(
+                        fragment_id=frag_id,
+                        raw_bytes=carved_bytes[:512],
+                        source_offset=abs_offset,
+                        filesystem_source=detected_fs,
+                    ))
+                    carved_raw_map[frag_id] = carved_bytes
 
                 pos += len(header)
+
+    # Run ML pipeline on all carved fragments
+    if carved_fragments:
+        ml_result = run_ml_pipeline(carved_fragments, zero_training=True)
+
+        # Map classification results by fragment_id
+        cls_by_id = {c.fragment_id: c for c in ml_result.classifications}
+
+        for frag in carved_fragments:
+            frag_id = frag.fragment_id
+            carved_bytes = carved_raw_map[frag_id]
+            cls = cls_by_id.get(frag_id)
+
+            val_report = validate_reconstructed_file(
+                carved_bytes,
+                expected_format=cls.predicted_class if cls else None,
+            )
+
+            if val_report.is_valid:
+                ml_meta = {
+                    "predicted_class": cls.predicted_class if cls else "unknown",
+                    "ml_confidence": round(cls.confidence, 4) if cls else None,
+                    "ml_entropy": round(cls.entropy, 4) if cls else None,
+                    "top_k": [
+                        {"class": c, "probability": round(p, 4)}
+                        for c, p in (cls.top_k[:5] if cls else [])
+                    ],
+                    "model": cls.model_info if cls else None,
+                    "validation_status": val_report.status,
+                }
+                carved_entry = {
+                    "file_id": frag_id,
+                    "filename": f"{frag_id.replace(':', '_')}.{val_report.detected_format}",
+                    "file_type": val_report.detected_format,
+                    "file_size": len(carved_bytes),
+                    "reconstructed_bytes": carved_bytes,
+                    "metadata": {
+                        "filename": f"{frag_id.replace(':', '_')}.{val_report.detected_format}",
+                        "file_size": len(carved_bytes),
+                        "deleted_if_available": True,
+                        "permissions": "-rw-r--r--",
+                        "ownership": {"uid": 0, "gid": 0},
+                        "filesystem": detected_fs,
+                        "source_locations": [frag.source_offset],
+                        "additional_attributes": ml_meta,
+                    },
+                    "source_locations": [frag.source_offset],
+                    "recovery_method": "ml_fragment_carving",
+                    "confidence": cls.confidence if cls else 0.70,
+                    "sha256": val_report.sha256,
+                    "validation": val_report.to_dict(),
+                    "ml_classification": ml_meta,
+                }
+                recovered_files.append(carved_entry)
+                ledger.record_recovery(
+                    file_id=frag_id,
+                    recovery_method="ml_fragment_carving",
+                    file_sha256=val_report.sha256,
+                    size_bytes=len(carved_bytes),
+                    metadata=carved_entry["metadata"],
+                )
 
     # 6. Save recovered files if output_dir specified
     if output_dir:

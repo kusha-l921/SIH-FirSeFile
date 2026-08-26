@@ -24,3 +24,7 @@ tqdm>=4.65.0
 
 # Testing & Quality
 pytest>=7.3.0
+
+# Cryptography & Ledger
+cryptography>=41.0.0
+

@@ -15,6 +15,20 @@ pub struct RecoveredFile {
     pub metadata: FileMetadata,
 
     pub sha256: Option<String>,
+
+    // ML classification fields
+    pub ml_predicted_class: Option<String>,
+    pub ml_confidence: Option<f32>,
+    pub ml_top_k: Option<Vec<MlPrediction>>,
+    pub validation_status: Option<String>,
+    pub validation_is_valid: Option<bool>,
+    pub reconstruction_confidence: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MlPrediction {
+    pub class_name: String,
+    pub probability: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

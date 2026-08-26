@@ -1,5 +1,9 @@
-import blockchain_ledger
 import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import blockchain_ledger
 import tempfile
 
 def test_full_pipeline():
