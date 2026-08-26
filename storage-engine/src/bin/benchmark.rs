@@ -1,0 +1,169 @@
+use std::time::Instant;
+
+fn main() {
+    const BLOCK_SIZE: usize = 4096;
+    const NUM_BLOCKS: usize = 100_000;
+
+    let mut data = vec![0u8; BLOCK_SIZE * NUM_BLOCKS];
+
+    // Insert PNG signatures at regular intervals.
+    for i in (0..data.len()).step_by(8192) {
+        if i + 4 <= data.len() {
+            data[i..i + 4].copy_from_slice(b"\x89PNG");
+        }
+    }
+
+    println!("PS2 Storage Engine Benchmark");
+    println!("============================");
+    println!("Data size   : {:.2} MB",
+        data.len() as f64 / 1024.0 / 1024.0
+    );
+    println!("Block size  : {} bytes", BLOCK_SIZE);
+    println!("Block count : {}", NUM_BLOCKS);
+
+    // --------------------------------------------------
+    // Baseline
+    // --------------------------------------------------
+
+    let start = Instant::now();
+
+    let mut baseline_matches = 0usize;
+
+    for block in data.chunks_exact(BLOCK_SIZE) {
+        let mut position = 0;
+
+        while position + 4 <= block.len() {
+            if &block[position..position + 4] == b"\x89PNG" {
+                baseline_matches += 1;
+            }
+
+            position += 1;
+        }
+    }
+
+    let baseline_time = start.elapsed();
+
+    // --------------------------------------------------
+    // NEON
+    // --------------------------------------------------
+
+    let start = Instant::now();
+
+    let mut simd_matches = 0usize;
+
+    for block in data.chunks_exact(BLOCK_SIZE) {
+        simd_matches += scan_png_simd(block);
+    }
+
+    let simd_time = start.elapsed();
+
+    // --------------------------------------------------
+    // Results
+    // --------------------------------------------------
+
+    let total_mb = data.len() as f64 / 1024.0 / 1024.0;
+
+    let baseline_mbps =
+        total_mb / baseline_time.as_secs_f64();
+
+    let simd_mbps =
+        total_mb / simd_time.as_secs_f64();
+
+    let speedup =
+        baseline_time.as_secs_f64() / simd_time.as_secs_f64();
+
+    println!();
+    println!("Results");
+    println!("-------");
+
+    println!(
+        "Baseline matches : {}",
+        baseline_matches
+    );
+
+    println!(
+        "SIMD matches     : {}",
+        simd_matches
+    );
+
+    println!(
+        "Baseline time    : {:.3} ms",
+        baseline_time.as_secs_f64() * 1000.0
+    );
+
+    println!(
+        "SIMD time        : {:.3} ms",
+        simd_time.as_secs_f64() * 1000.0
+    );
+
+    println!(
+        "Baseline         : {:.2} MB/s",
+        baseline_mbps
+    );
+
+    println!(
+        "SIMD             : {:.2} MB/s",
+        simd_mbps
+    );
+
+    println!(
+        "Speedup          : {:.2}x",
+        speedup
+    );
+}
+
+#[cfg(target_arch = "aarch64")]
+fn scan_png_simd(data: &[u8]) -> usize {
+    use std::arch::aarch64::*;
+
+    if data.len() < 4 {
+        return 0;
+    }
+
+    let mut matches = 0usize;
+
+    unsafe {
+        let target = vdup_n_u8(0x89);
+
+        let mut offset = 0;
+
+        while offset + 16 <= data.len() {
+            let chunk = vld1_u8(data.as_ptr().add(offset));
+
+            let comparison = vceq_u8(chunk, target);
+
+            let mut mask = [0u8; 8];
+
+            vst1_u8(mask.as_mut_ptr(), comparison);
+
+            for lane in 0..8 {
+                if mask[lane] != 0 {
+                    let pos = offset + lane;
+
+                    if pos + 4 <= data.len()
+                        && &data[pos..pos + 4] == b"\x89PNG"
+                    {
+                        matches += 1;
+                    }
+                }
+            }
+
+            offset += 16;
+        }
+
+        while offset + 4 <= data.len() {
+            if &data[offset..offset + 4] == b"\x89PNG" {
+                matches += 1;
+            }
+
+            offset += 1;
+        }
+    }
+
+    matches
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn scan_png_simd(_data: &[u8]) -> usize {
+    0
+}
