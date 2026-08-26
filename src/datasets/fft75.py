@@ -146,31 +146,43 @@ def create_leak_free_split(
     for cls_name, sources in class_to_sources.items():
         rng.shuffle(sources)
         n_sources = len(sources)
-        if n_sources == 1:
-            n_train, n_val, n_test = 1, 0, 0
-        elif n_sources == 2:
-            if val_ratio > 0:
-                n_train, n_val, n_test = 1, 1, 0
-            elif test_ratio > 0:
-                n_train, n_val, n_test = 1, 0, 1
-            else:
-                n_train, n_val, n_test = 2, 0, 0
-        else:
-            n_val = max(1, int(round(n_sources * val_ratio))) if val_ratio > 0 else 0
-            n_test = max(1, int(round(n_sources * test_ratio))) if test_ratio > 0 else 0
+        if n_sources >= 3:
+            n_val = max(1, int(round(n_sources * val_ratio)))
+            n_test = max(1, int(round(n_sources * test_ratio)))
             n_train = max(1, n_sources - n_val - n_test)
-        
-        train_sources = set(sources[:n_train])
-        val_sources = set(sources[n_train:n_train + n_val])
-        test_sources = set(sources[n_train + n_val:])
-        
-        for src_id in sources:
-            items = source_to_items[src_id]
-            if src_id in train_sources:
-                train_manifest.extend(items)
-            elif src_id in val_sources:
-                val_manifest.extend(items)
+            
+            train_sources = set(sources[:n_train])
+            val_sources = set(sources[n_train:n_train + n_val])
+            test_sources = set(sources[n_train + n_val:])
+            
+            for src_id in sources:
+                items = source_to_items[src_id]
+                if src_id in train_sources:
+                    train_manifest.extend(items)
+                elif src_id in val_sources:
+                    val_manifest.extend(items)
+                else:
+                    test_manifest.extend(items)
+        elif n_sources == 2:
+            train_manifest.extend(source_to_items[sources[0]])
+            if val_ratio > 0:
+                val_manifest.extend(source_to_items[sources[1]])
             else:
-                test_manifest.extend(items)
+                test_manifest.extend(source_to_items[sources[1]])
+        else:
+            # Single source file: partition fragments chronologically by offset
+            items = list(source_to_items[sources[0]])
+            n_items = len(items)
+            if n_items == 1:
+                train_manifest.extend(items)
+                val_manifest.extend(items)  # Single sample fallback
+            else:
+                n_v = max(1, int(round(n_items * val_ratio)))
+                n_t = max(1, int(round(n_items * test_ratio)))
+                n_tr = max(1, n_items - n_v - n_t)
+                
+                train_manifest.extend(items[:n_tr])
+                val_manifest.extend(items[n_tr : n_tr + n_v])
+                test_manifest.extend(items[n_tr + n_v:])
                 
     return train_manifest, val_manifest, test_manifest
