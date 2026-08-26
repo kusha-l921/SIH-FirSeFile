@@ -791,7 +791,7 @@ fn validate_ag_geometry(
 
 #[cfg(test)]
 pub(crate) mod testing {
-    pub(crate) use super::tests::{golden_v4, golden_v5, put32, put64};
+    pub(crate) use super::tests::{golden_v4, golden_v5, put16, put32, put64};
 }
 
 #[cfg(test)]

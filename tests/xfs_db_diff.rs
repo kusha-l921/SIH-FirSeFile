@@ -211,20 +211,6 @@ fn differential_alloc_btrees_against_xfs_db_fixture() {
         String::from_utf8_lossy(&out.stdout).to_string()
     };
 
-    let parse_pairs = |text: &str| -> Vec<(u64, u64)> {
-        text.lines()
-            .filter_map(|line| {
-                let bracket = line.trim().strip_prefix(|c: char| c.is_ascii_digit())?;
-                let inner = bracket.strip_prefix(':')?.trim().strip_prefix('[')?;
-                let inner = inner.strip_suffix(']')?;
-                let mut parts = inner.split(',');
-                let a = parts.next()?.trim().parse().ok()?;
-                let b = parts.next()?.trim().parse().ok()?;
-                Some((a, b))
-            })
-            .collect()
-    };
-
     let root_bb_level = |height: u32| -> u32 {
         assert!(height >= 1, "tree height zero makes no sense");
         height - 1
@@ -316,6 +302,20 @@ fn differential_alloc_btrees_against_xfs_db_fixture() {
     }
 }
 
+fn parse_pairs(text: &str) -> Vec<(u64, u64)> {
+    text.lines()
+        .filter_map(|line| {
+            let bracket = line.trim().strip_prefix(|c: char| c.is_ascii_digit())?;
+            let inner = bracket.strip_prefix(':')?.trim().strip_prefix('[')?;
+            let inner = inner.strip_suffix(']')?;
+            let mut parts = inner.split(',');
+            let a = parts.next()?.trim().parse().ok()?;
+            let b = parts.next()?.trim().parse().ok()?;
+            Some((a, b))
+        })
+        .collect()
+}
+
 fn parse_inobt_startinos(text: &str) -> Vec<u32> {
     text.lines()
         .filter_map(|line| {
@@ -326,4 +326,282 @@ fn parse_inobt_startinos(text: &str) -> Vec<u32> {
             first.parse().ok()
         })
         .collect()
+}
+
+#[test]
+#[ignore]
+fn differential_allocation_records_against_xfs_db_fixture() {
+    use xfs_recovery_engine::{WalkMode, collect_free_space, collect_inode_allocation};
+
+    let Some(image) = std::env::var_os("XRE_TEST_IMAGE") else {
+        eprintln!("skipped: set XRE_TEST_IMAGE=<raw xfs image path>");
+        return;
+    };
+    if !xfs_db_available() {
+        eprintln!("skipped: xfs_db not installed");
+        return;
+    }
+
+    let mut img = FileImage::open(&image).expect("open fixture image read-only");
+    let (sb, geo) = Superblock::parse(&mut img, 0).expect("parse superblock");
+
+    let tree_recs = |cmds: &[&str]| -> Vec<(u64, u64)> {
+        let out = Command::new("xfs_db")
+            .args(["-r", "-f"])
+            .arg(&image)
+            .args(
+                cmds.iter()
+                    .flat_map(|c| vec!["-c".to_string(), c.to_string()]),
+            )
+            .args(["-c", "print"])
+            .output()
+            .expect("run xfs_db");
+        let text = String::from_utf8_lossy(&out.stdout);
+        parse_pairs(&text)
+    };
+
+    for ag in 0..sb.ag_count {
+        let space = collect_free_space(&mut img, 0, &sb, &geo, ag, WalkMode::Strict)
+            .unwrap_or_else(|e| panic!("free-space ag {ag}: {e}"));
+        assert!(space.issues.is_empty(), "ag {ag}: {:?}", space.issues);
+
+        let agf_abs = ag as u64 * geo.ag_blocks() as u64;
+        let bno_expect = tree_recs(&[&format!("fsblock {}", agf_abs + 1), "type bnobt"]);
+        let cnt_expect = tree_recs(&[&format!("fsblock {}", agf_abs + 2), "type cntbt"]);
+
+        let ours_bno: Vec<(u64, u64)> = space
+            .bno_extents
+            .iter()
+            .map(|e| (e.startblock as u64, e.blockcount as u64))
+            .collect();
+        let ours_cnt: Vec<(u64, u64)> = space
+            .cnt_extents
+            .iter()
+            .map(|e| (e.startblock as u64, e.blockcount as u64))
+            .collect();
+        assert_eq!(ours_bno, bno_expect, "bnobt ag {ag} extents differ");
+        assert_eq!(ours_cnt, cnt_expect, "cntbt ag {ag} extents differ");
+        assert!(
+            space.sums_match_agf(),
+            "ag {ag}: sum(cnt)={} vs AGF freeblks={}",
+            space.cnt_total_blocks(),
+            space.agf_free_blocks
+        );
+
+        let map = collect_inode_allocation(&mut img, 0, &sb, &geo, ag, WalkMode::Strict)
+            .unwrap_or_else(|e| panic!("inode allocation ag {ag}: {e}"));
+        assert!(map.issues.is_empty(), "ag {ag}: {:?}", map.issues);
+
+        eprintln!(
+            "ag {ag}: bno={} cnt={} extents match xfs_db; freeblks={}; inode chunks={}",
+            ours_bno.len(),
+            ours_cnt.len(),
+            space.agf_free_blocks,
+            map.chunk_count()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn differential_inode_discovery_against_xfs_db_fixture() {
+    use xfs_recovery_engine::{
+        DiscoveryOptions, ImageRead as _, SlotState, WalkMode, collect_free_space,
+        collect_inode_allocation, discover_inode_slots, locate_inode,
+    };
+
+    let Some(image) = std::env::var_os("XRE_TEST_IMAGE") else {
+        eprintln!("skipped: set XRE_TEST_IMAGE=<raw xfs image path>");
+        return;
+    };
+    if !xfs_db_available() {
+        eprintln!("skipped: xfs_db not installed");
+        return;
+    }
+
+    let mut img = FileImage::open(&image).expect("open fixture image read-only");
+    let (sb, geo) = Superblock::parse(&mut img, 0).expect("parse superblock");
+
+    for ag in 0..sb.ag_count {
+        let map = collect_inode_allocation(&mut img, 0, &sb, &geo, ag, WalkMode::Strict)
+            .unwrap_or_else(|e| panic!("inode map ag {ag}: {e}"));
+        let found =
+            discover_inode_slots(&map, &sb, &geo, &DiscoveryOptions::default()).expect("discovery");
+
+        let allocated = found
+            .iter()
+            .filter(|d| d.state == SlotState::Allocated)
+            .count();
+        assert_eq!(allocated as u64, map.allocated_inodes());
+        assert_eq!((found.len() - allocated) as u64, map.free_inodes());
+        assert_eq!(
+            found.len() as u64,
+            map.iter_chunks().map(|r| r.inode_count as u64).sum::<u64>()
+        );
+
+        for d in found.iter().step_by(97) {
+            assert_ne!(d.location.byte_offset, 0);
+            let ag_check = geo
+                .ag_no_of_ino(d.location.ino)
+                .expect("ag of discovered inode");
+            assert_eq!(ag_check, d.location.ag_number);
+        }
+
+        if ag == 0 {
+            let root_loc = locate_inode(&sb, &geo, sb.root_inode).expect("root location");
+            assert_eq!(root_loc.ag_number, 0);
+
+            let mut magic = [0u8; 2];
+            img.read_at(root_loc.byte_offset, &mut magic)
+                .expect("read inode magic");
+            assert_eq!(&magic, b"IN", "located root inode lacks IN magic on disk");
+
+            let out = Command::new("xfs_db")
+                .args(["-r", "-f"])
+                .arg(&image)
+                .args([
+                    "-c",
+                    &format!("inode {}", sb.root_inode),
+                    "-c",
+                    "print core.magic",
+                ])
+                .output()
+                .expect("run xfs_db");
+            let text = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                text.contains("core.magic = 0x494e"),
+                "xfs_db disagrees about root inode: {text}"
+            );
+        }
+
+        let space =
+            collect_free_space(&mut img, 0, &sb, &geo, ag, WalkMode::Strict).expect("space");
+        let _ = space;
+
+        eprintln!(
+            "ag {ag}: chunks={} discovered={} allocated={free_hint}",
+            map.chunk_count(),
+            found.len(),
+            free_hint = allocated
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn differential_dinode_parsing_against_xfs_db_fixture() {
+    use xfs_recovery_engine::{
+        CrcStatus, DiscoveryOptions, FileType, SlotState, WalkMode, collect_inode_allocation,
+        discover_inode_slots, parse_dinode,
+    };
+
+    let Some(image) = std::env::var_os("XRE_TEST_IMAGE") else {
+        eprintln!("skipped: set XRE_TEST_IMAGE=<raw xfs image path>");
+        return;
+    };
+    if !xfs_db_available() {
+        eprintln!("skipped: xfs_db not installed");
+        return;
+    }
+
+    let mut img = FileImage::open(&image).expect("open fixture image read-only");
+    let (sb, geo) = Superblock::parse(&mut img, 0).expect("parse superblock");
+
+    for ag in 0..sb.ag_count {
+        let map = collect_inode_allocation(&mut img, 0, &sb, &geo, ag, WalkMode::Strict)
+            .unwrap_or_else(|e| panic!("inode map ag {ag}: {e}"));
+        let found =
+            discover_inode_slots(&map, &sb, &geo, &DiscoveryOptions::default()).expect("discovery");
+
+        for d in found.iter().filter(|d| d.state == SlotState::Allocated) {
+            let dinode = parse_dinode(&mut img, 0, &sb, &d.location)
+                .unwrap_or_else(|e| panic!("parse dinode {} failed: {e}", d.location.ino));
+
+            assert_eq!(dinode.core.magic, 0x494E);
+            if sb.version5() {
+                assert_eq!(dinode.core.version, 3);
+                assert_eq!(
+                    dinode.core.crc_status,
+                    CrcStatus::Verified,
+                    "inode {} CRC must verify",
+                    d.location.ino
+                );
+                assert_eq!(dinode.core.ino, Some(d.location.ino));
+                assert_eq!(dinode.core.uuid, Some(sb.uuid));
+            } else {
+                assert!(dinode.core.version <= 2);
+                assert_eq!(dinode.core.crc_status, CrcStatus::NotApplicable);
+            }
+
+            let out = Command::new("xfs_db")
+                .args(["-r", "-f"])
+                .arg(&image)
+                .args(["-c", &format!("inode {}", d.location.ino), "-c", "print"])
+                .output()
+                .expect("run xfs_db inode print");
+            assert!(out.status.success(), "xfs_db inode print failed");
+            let text = String::from_utf8_lossy(&out.stdout);
+
+            let mode_str = xfs_db_field(&text, "core.mode").expect("core.mode");
+            let mode_val = u16::from_str_radix(mode_str.trim_start_matches('0'), 8).unwrap_or(0);
+            assert_eq!(
+                dinode.core.mode, mode_val,
+                "inode {} mode mismatch",
+                d.location.ino
+            );
+
+            let size_str = xfs_db_field(&text, "core.size").expect("core.size");
+            let size_val: u64 = size_str.parse().expect("parse size");
+            assert_eq!(
+                dinode.core.size, size_val,
+                "inode {} size mismatch",
+                d.location.ino
+            );
+
+            let nblocks_str = xfs_db_field(&text, "core.nblocks").expect("core.nblocks");
+            let nblocks_val: u64 = nblocks_str.parse().expect("parse nblocks");
+            assert_eq!(
+                dinode.core.nblocks, nblocks_val,
+                "inode {} nblocks mismatch",
+                d.location.ino
+            );
+
+            let nextents_str = xfs_db_field(&text, "core.nextents").expect("core.nextents");
+            let nextents_val: u64 = nextents_str.parse().expect("parse nextents");
+            assert_eq!(
+                dinode.core.nextents, nextents_val,
+                "inode {} nextents mismatch",
+                d.location.ino
+            );
+
+            let gen_str = xfs_db_field(&text, "core.gen").expect("core.gen");
+            let gen_val: u32 = gen_str.parse().expect("parse gen");
+            assert_eq!(
+                dinode.core.generation, gen_val,
+                "inode {} gen mismatch",
+                d.location.ino
+            );
+
+            if dinode.core.is_dir() {
+                assert_eq!(dinode.core.file_type, FileType::Directory);
+            } else if dinode.core.is_file() {
+                assert_eq!(dinode.core.file_type, FileType::RegularFile);
+            }
+
+            if let Some(format_str) = xfs_db_field(&text, "core.format") {
+                let fmt_val = format_str
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .parse::<u8>()
+                    .unwrap_or(255);
+                assert_eq!(
+                    dinode.core.format.to_u8(),
+                    fmt_val,
+                    "inode {} format mismatch",
+                    d.location.ino
+                );
+            }
+        }
+    }
 }
