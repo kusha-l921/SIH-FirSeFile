@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "src/acquisition",
+    "src/recovery/xfs",
+    "integration_tests",
+]
+resolver = "2"
+
+[workspace.lints.rust]
+warnings = "deny"

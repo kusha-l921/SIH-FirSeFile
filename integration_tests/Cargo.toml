@@ -1,0 +1,16 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+acquisition         = { path = "../src/acquisition" }
+xfs-recovery-engine = { path = "../src/recovery/xfs" }
+
+[lib]
+name = "integration_tests"
+path = "src/lib.rs"
+
+[lints.rust]
+warnings = "deny"

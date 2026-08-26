@@ -1,0 +1,21 @@
+[package]
+name = "xfs-recovery-engine"
+version = "0.1.0"
+edition = "2024"
+description = "XFS forensic recovery engine — read-only structural analysis (Part 1)"
+
+# Zero external dependencies — CRC32C, big-endian readers, SHA-256 are
+# hand-rolled in src/util/ per the kushal branch hard constraint.
+[dependencies]
+
+[lib]
+name = "xfs_recovery_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xfs-recovery-engine"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+warnings    = "deny"
