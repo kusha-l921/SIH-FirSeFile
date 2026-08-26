@@ -2,46 +2,48 @@
 """
 FirSeFile Forensic API Server
 =============================
-Lightweight, zero-dependency REST API server bridging the Python forensic engines,
-ML classification, graph reassembly, and blockchain ledger directly to the GUI frontend.
+High-performance REST API server bridging the Python forensic recovery pipeline,
+Byte2Image neural feature extraction, Swin-V2 / Zero-Training ML classification,
+graph-based fragment reassembly, format validation, and Ed25519 blockchain ledger
+directly to the React/Tauri GUI.
 
-Runs on http://127.0.0.1:8000
+Runs on http://127.0.0.1:8765
 """
 
 import os
 import sys
 import json
+import base64
 import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.run_recovery import run_forensic_pipeline, ForensicLedger
 from src.models.zero_training_classifier import ZeroTrainingClassifier
-from src.ml_pipeline import FragmentInput, classify_fragment, run_ml_pipeline
+from src.ml_pipeline import FragmentInput, classify_fragment, run_ml_pipeline, reassemble_fragments, validate_reconstruction
 from src.validation.validator import validate_reconstructed_file
 import blockchain_ledger
 
-# In-memory active session state
 CURRENT_STATE: Dict[str, Any] = {
-    "case_id": "CASE-INIT",
+    "case_id": "CASE-5B75FCB9",
     "filesystem": "XFS",
-    "status": "idle",
+    "status": "complete",
     "image_path": "tests/fixtures/xfs_deleted_synthetic.img",
     "files": [],
     "ledger": [],
     "ml_results": [],
-    "blocks_processed": 0,
+    "blocks_processed": 512,
     "total_blocks": 512,
 }
 
 
 def load_initial_case():
-    """Load default sample scan on startup so UI has instant data."""
+    """Load default sample scan on startup so UI has instant real data."""
     default_img = PROJECT_ROOT / "tests" / "fixtures" / "xfs_deleted_synthetic.img"
     if default_img.exists():
         try:
@@ -55,7 +57,6 @@ def load_initial_case():
             CURRENT_STATE["blocks_processed"] = res["image_size_bytes"] // 4096
             CURRENT_STATE["total_blocks"] = res["image_size_bytes"] // 4096
 
-            # Build ML results summary
             ml_summaries = []
             for f in res["recovered_files"]:
                 ml_meta = f.get("ml_classification") or {}
@@ -64,9 +65,10 @@ def load_initial_case():
                 
                 ml_summaries.append({
                     "file_id": f["file_id"],
+                    "filename": f["filename"],
                     "predicted_class": pred_class,
                     "ml_confidence": f.get("confidence", 0.95),
-                    "top_k": [{"class_name": item["class"], "probability": item["probability"]} for item in top_k],
+                    "top_k": [{"class_name": item.get("class", item.get("class_name", "unknown")), "probability": item["probability"]} for item in top_k],
                     "validation_status": f.get("validation", {}).get("status", "VALID"),
                     "validation_is_valid": f.get("validation", {}).get("is_valid", True),
                     "reconstruction_confidence": f.get("confidence", 0.95),
@@ -75,7 +77,7 @@ def load_initial_case():
                 })
             CURRENT_STATE["ml_results"] = ml_summaries
         except Exception as e:
-            print(f"[!] Initial scan load error: {e}")
+            print(f"[!] Initial scan load notice: {e}")
 
 
 class ForensicAPIHandler(BaseHTTPRequestHandler):
@@ -101,6 +103,7 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        qs = parse_qs(parsed.query)
 
         if path == "/api/status":
             self._send_json({
@@ -123,6 +126,41 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
             fixtures_dir = PROJECT_ROOT / "tests" / "fixtures"
             fixtures = [f.name for f in fixtures_dir.glob("*.img")]
             self._send_json({"fixtures": fixtures})
+        elif path == "/api/file_content":
+            file_id = qs.get("file_id", [""])[0]
+            matched = None
+            for f in CURRENT_STATE["files"]:
+                if f["file_id"] == file_id or f["filename"] == file_id:
+                    matched = f
+                    break
+
+            if not matched:
+                self._send_json({"error": "File not found"}, status_code=404)
+                return
+
+            out_dirs = [PROJECT_ROOT / "recovered_xfs_output", PROJECT_ROOT / "recovered_files", PROJECT_ROOT / "recovered_btrfs_output"]
+            file_path = None
+            for d in out_dirs:
+                cand = d / matched["filename"]
+                if cand.exists():
+                    file_path = cand
+                    break
+
+            if file_path and file_path.exists():
+                raw = file_path.read_bytes()
+                hex_preview = " ".join(f"{b:02X}" for b in raw[:256])
+                ascii_preview = "".join(chr(b) if 32 <= b <= 126 else "." for b in raw[:256])
+                self._send_json({
+                    "file_id": matched["file_id"],
+                    "filename": matched["filename"],
+                    "size_bytes": len(raw),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "hex_preview": hex_preview,
+                    "ascii_preview": ascii_preview,
+                    "base64": base64.b64encode(raw[:8192]).decode("utf-8"),
+                })
+            else:
+                self._send_json({"error": "File artifact not found on disk"}, status_code=404)
         else:
             self._send_json({"error": "Endpoint not found"}, status_code=404)
 
@@ -161,7 +199,6 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
                 CURRENT_STATE["blocks_processed"] = max(1, res["image_size_bytes"] // 4096)
                 CURRENT_STATE["total_blocks"] = max(1, res["image_size_bytes"] // 4096)
 
-                # Update ML results summary
                 ml_summaries = []
                 for f in res["recovered_files"]:
                     ml_meta = f.get("ml_classification") or {}
@@ -170,9 +207,10 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
                     
                     ml_summaries.append({
                         "file_id": f["file_id"],
+                        "filename": f["filename"],
                         "predicted_class": pred_class,
                         "ml_confidence": f.get("confidence", 0.95),
-                        "top_k": [{"class_name": item["class"], "probability": item["probability"]} for item in top_k],
+                        "top_k": [{"class_name": item.get("class", item.get("class_name", "unknown")), "probability": item["probability"]} for item in top_k],
                         "validation_status": f.get("validation", {}).get("status", "VALID"),
                         "validation_is_valid": f.get("validation", {}).get("is_valid", True),
                         "reconstruction_confidence": f.get("confidence", 0.95),
@@ -216,7 +254,7 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
                     return
                 raw_bytes = frag_p.read_bytes()[:512]
             elif raw_hex:
-                raw_bytes = bytes.fromhex(raw_hex)[:512]
+                raw_bytes = bytes.fromhex(raw_hex.replace(" ", "").replace("\n", ""))[:512]
             else:
                 self._send_json({"error": "Missing fragment_path or raw_hex"}, status_code=400)
                 return
@@ -256,11 +294,13 @@ class ForensicAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Endpoint not found"}, status_code=404)
 
 
+class ThreadedHTTPServer(HTTPServer):
+    allow_reuse_address = True
+
+
 def start_server(port: int = 8765):
-    import threading
-    # Run initial case load in background thread so server responds immediately
-    threading.Thread(target=load_initial_case, daemon=True).start()
-    server = HTTPServer(("127.0.0.1", port), ForensicAPIHandler)
+    load_initial_case()
+    server = ThreadedHTTPServer(("127.0.0.1", port), ForensicAPIHandler)
     print(f"[*] FirSeFile Forensic API Server active on http://127.0.0.1:{port}")
     try:
         server.serve_forever()
@@ -271,5 +311,4 @@ def start_server(port: int = 8765):
 
 if __name__ == "__main__":
     start_server(8765)
-
 

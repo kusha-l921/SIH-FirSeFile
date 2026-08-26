@@ -75,6 +75,7 @@ type LedgerBlock = {
 
 type MlResultSummary = {
   file_id: string;
+  filename?: string;
   predicted_class: string;
   ml_confidence: number;
   top_k: MlPrediction[];
@@ -83,6 +84,15 @@ type MlResultSummary = {
   reconstruction_confidence: number;
   sha256: string;
   ledger_block_index: number | null;
+};
+
+type FileContentData = {
+  file_id: string;
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+  hex_preview: string;
+  ascii_preview: string;
 };
 
 function formatConfidence(c: number | null) {
@@ -103,9 +113,17 @@ export default function App() {
 
   const [files, setFiles] = useState<RecoveredFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<RecoveredFile | null>(null);
+  const [fileContent, setFileContent] = useState<FileContentData | null>(null);
+  const [loadingContent, setLoadingContent] = useState(false);
+
   const [status, setStatus] = useState<CaseStatus | null>(null);
   const [mlResults, setMlResults] = useState<MlResultSummary[]>([]);
   const [selectedMl, setSelectedMl] = useState<MlResultSummary | null>(null);
+
+  // Live Fragment Classifier Tester
+  const [testHex, setTestHex] = useState<string>("25 50 44 46 2D 31 2E 34 0A 25 D0 D4 C5 D8");
+  const [customPred, setCustomPred] = useState<any | null>(null);
+  const [predicting, setPredicting] = useState(false);
 
   const [ledger, setLedger] = useState<LedgerBlock[]>([]);
   const [verifyResult, setVerifyResult] = useState<{ valid: boolean; reason?: string | null } | null>(null);
@@ -114,7 +132,7 @@ export default function App() {
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   const [caseId, setCaseId] = useState("CASE-5B75FCB9");
-  const [investigator, setInvestigator] = useState("Forensic Analyst");
+  const [investigator, setInvestigator] = useState("Forensic Analyst 01");
   const [imagePath, setImagePath] = useState<string>("tests/fixtures/xfs_deleted_synthetic.img");
 
   const [reportPath, setReportPath] = useState<string | null>(null);
@@ -168,12 +186,36 @@ export default function App() {
     refreshData();
   }, []);
 
+  const handleSelectFile = async (f: RecoveredFile) => {
+    if (selectedFile?.file_id === f.file_id) {
+      setSelectedFile(null);
+      setFileContent(null);
+      return;
+    }
+
+    setSelectedFile(f);
+    setLoadingContent(true);
+    setFileContent(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/file_content?file_id=${encodeURIComponent(f.file_id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFileContent(data);
+      }
+    } catch (e) {
+      console.warn("Could not fetch file content:", e);
+    } finally {
+      setLoadingContent(false);
+    }
+  };
+
   const handleRunScan = async (overridePath?: string) => {
     const target = overridePath || imagePath;
     if (!target) return;
 
     setScanning(true);
-    setScanMessage(`Scanning evidence image: ${target} ...`);
+    setScanMessage(`[SCANNING] Parsing filesystem data structures & carving: ${target} ...`);
     try {
       const res = await fetch(`${API_BASE}/api/scan`, {
         method: "POST",
@@ -182,22 +224,22 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setScanMessage(`Recovery completed: ${data.total_files_recovered} files recovered and logged.`);
+        setScanMessage(`[SUCCESS] Acquisition complete: ${data.total_files_recovered} artifacts recovered and chained.`);
         await refreshData();
         setTab("files");
       } else {
         const err = await res.json();
-        setScanMessage(`Scan error: ${err.error || "Scan failed"}`);
+        setScanMessage(`[ERROR] Scan error: ${err.error || "Scan failed"}`);
       }
     } catch (e: any) {
       try {
         const s = await invoke<CaseStatus>("scan_image", { imagePath: target });
         setStatus(s);
-        setScanMessage(`Recovery executed via native core.`);
+        setScanMessage(`[TAURI] Recovery executed via native core.`);
         await refreshData();
         setTab("files");
       } catch (err: any) {
-        setScanMessage(`API offline: ${e.message || err.toString()}`);
+        setScanMessage(`[OFFLINE] API unreachable: ${e.message || err.toString()}`);
       }
     } finally {
       setScanning(false);
@@ -224,6 +266,27 @@ export default function App() {
       }
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleClassifyRaw = async () => {
+    if (!testHex.trim()) return;
+    setPredicting(true);
+    setCustomPred(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_hex: testHex }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomPred(data);
+      }
+    } catch (e: any) {
+      console.warn("Classification failed:", e);
+    } finally {
+      setPredicting(false);
     }
   };
 
@@ -268,12 +331,12 @@ export default function App() {
 
   return (
     <div className="layout-root">
-      {/* Centered Clean Header */}
+      {/* Centered Topbar */}
       <header className="site-header">
         <div className="header-inner">
           <div className="brand">
             <span className="brand-title">FirSeFile</span>
-            <span className="brand-tag">{status?.filesystem || "Forensic FS"}</span>
+            <span className="brand-tag">{status?.filesystem || "XFS"}</span>
           </div>
 
           <nav className="tab-nav">
@@ -305,21 +368,21 @@ export default function App() {
 
           <div className="header-status">
             <span className={`status-dot ${backendConnected ? "live" : "ready"}`} />
-            <span className="status-label">{backendConnected ? "Live API" : "Standalone"}</span>
+            <span className="status-label">{backendConnected ? "REST API Connected" : "Local Engine"}</span>
           </div>
         </div>
       </header>
 
-      {/* Main Centered Content Feed */}
+      {/* Main Centered Feed */}
       <main className="content-container">
-        {/* TAB 1: RECOVERED ARTIFACTS FEED */}
+        {/* TAB 1: RECOVERED FILES */}
         {tab === "files" && (
           <div className="feed-view">
             <div className="feed-header">
               <div>
                 <h1 className="feed-title">Recovered Forensic Files</h1>
                 <p className="feed-subtitle">
-                  Files reconstructed from deleted filesystem inodes, extents, and carved fragment clusters.
+                  Files extracted via structural inode parsing, extent tracking, and neural fragment carving.
                 </p>
               </div>
               <div className="header-actions">
@@ -328,7 +391,7 @@ export default function App() {
                   onClick={() => handleRunScan("tests/fixtures/xfs_deleted_synthetic.img")}
                   disabled={scanning}
                 >
-                  {scanning ? "Scanning..." : "Quick XFS Scan"}
+                  {scanning ? "Processing..." : "Quick XFS Scan"}
                 </button>
                 <button
                   className="card-btn secondary"
@@ -347,7 +410,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Centered Cards Feed (Matching Reference Image Aesthetic) */}
+            {/* Cards Feed */}
             <div className="cards-feed">
               {files.map((f) => {
                 const isSelected = selectedFile?.file_id === f.file_id;
@@ -355,7 +418,7 @@ export default function App() {
                   <article
                     key={f.file_id}
                     className={`feed-card ${isSelected ? "card-selected" : ""}`}
-                    onClick={() => setSelectedFile(isSelected ? null : f)}
+                    onClick={() => handleSelectFile(f)}
                   >
                     <div className="card-topline">
                       <h2 className="card-heading">{f.filename}</h2>
@@ -394,7 +457,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Expandable Details Drawer */}
+                    {/* Expandable Live Backend Content Inspector */}
                     {isSelected && (
                       <div className="card-drawer">
                         <div className="drawer-grid">
@@ -419,6 +482,22 @@ export default function App() {
                         <div className="hash-row">
                           <span className="d-label">SHA-256 Digest:</span>
                           <code className="d-hash mono">{f.sha256 || "N/A"}</code>
+                        </div>
+
+                        {/* Live Hex & Byte Content View */}
+                        <div className="content-inspector-box">
+                          <span className="d-label">Live Binary Hex Inspection (First 256 Bytes):</span>
+                          {loadingContent ? (
+                            <p className="loading-text">Fetching raw bytes from filesystem disk...</p>
+                          ) : fileContent ? (
+                            <div className="hex-viewer mono">
+                              <pre>{fileContent.hex_preview}</pre>
+                            </div>
+                          ) : (
+                            <div className="hex-viewer mono">
+                              <pre>00 00 00 00 00 00 00 00 [Click inspect to fetch live disk sectors]</pre>
+                            </div>
+                          )}
                         </div>
 
                         <div className="drawer-actions">
@@ -463,18 +542,67 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: ML & REASSEMBLY FEED */}
+        {/* TAB 2: ML & REASSEMBLY */}
         {tab === "ml" && (
           <div className="feed-view">
             <div className="feed-header">
               <div>
                 <h1 className="feed-title">ML Fragment Classifier &amp; Reassembly</h1>
                 <p className="feed-subtitle">
-                  Byte2Image 2D representation, Swin Transformer V2 tiny inference, and graph sequence ordering.
+                  Byte2Image 2D neural encoding, Swin Transformer V2 tiny inference, and graph-based reassembly.
                 </p>
               </div>
             </div>
 
+            {/* Live Interactive Fragment Classifier Tool */}
+            <div className="feed-card tool-card">
+              <h3 className="tool-title">Live ML Fragment Tester (Online Classifier)</h3>
+              <p className="tool-desc">
+                Input raw hex bytes below to run real-time Byte2Image transformation + Zero-Training/Swin-V2 inference.
+              </p>
+              <div className="tool-input-row">
+                <input
+                  type="text"
+                  className="form-input mono"
+                  value={testHex}
+                  onChange={(e) => setTestHex(e.target.value)}
+                  placeholder="25 50 44 46 2D 31 2E 34 (Raw Hex Bytes)"
+                />
+                <button
+                  className="card-btn primary"
+                  onClick={handleClassifyRaw}
+                  disabled={predicting || !testHex.trim()}
+                >
+                  {predicting ? "Classifying..." : "Run ML Classifier"}
+                </button>
+              </div>
+
+              {customPred && (
+                <div className="tool-result-box">
+                  <div className="result-header">
+                    <span>Predicted Format: <strong>{customPred.predicted_class?.toUpperCase()}</strong></span>
+                    <span>Confidence: <strong>{(customPred.confidence * 100).toFixed(1)}%</strong></span>
+                    <span>Entropy: <strong>{customPred.entropy?.toFixed(4)}</strong></span>
+                  </div>
+                  <div className="prob-matrix" style={{ marginTop: "0.5rem" }}>
+                    {customPred.top_k?.map((p: any) => (
+                      <div key={p.class_name} className="prob-row">
+                        <span className="prob-lbl mono">{p.class_name.toUpperCase()}</span>
+                        <div className="prob-track">
+                          <div
+                            className="prob-bar"
+                            style={{ width: `${Math.max(4, p.probability * 100)}%` }}
+                          />
+                        </div>
+                        <span className="prob-val mono">{(p.probability * 100).toFixed(2)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Classified Fragments Feed */}
             <div className="cards-feed">
               {mlResults.map((item) => {
                 const isSelected = selectedMl?.file_id === item.file_id;
@@ -502,7 +630,7 @@ export default function App() {
                         </span>
                         <span className="meta-sep">•</span>
                         <span className="meta-item">
-                          <span className="meta-lbl">Reconstruction Score:</span> {(item.reconstruction_confidence * 100).toFixed(0)}%
+                          <span className="meta-lbl">Reconstruction:</span> {(item.reconstruction_confidence * 100).toFixed(0)}%
                         </span>
                         <span className="meta-sep">•</span>
                         <span className="meta-item">

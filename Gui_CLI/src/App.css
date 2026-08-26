@@ -594,3 +594,78 @@ body {
   gap: 0.75rem;
   margin-top: 0.5rem;
 }
+
+/* Binary Hex Content Inspector */
+.content-inspector-box {
+  background-color: #f9fafb;
+  border: 1px solid var(--border-light);
+  padding: 0.75rem;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hex-viewer {
+  background-color: #18181b;
+  color: #38bdf8;
+  padding: 0.6rem 0.75rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  line-height: 1.4;
+}
+
+.hex-viewer pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.loading-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Interactive Fragment Tester Tool Card */
+.tool-card {
+  background-color: #ffffff;
+  border-left: 4px solid var(--accent-cyan);
+}
+
+.tool-title {
+  font-size: 1rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem 0;
+  color: var(--text-main);
+}
+
+.tool-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 0.85rem 0;
+}
+
+.tool-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tool-result-box {
+  margin-top: 0.85rem;
+  background-color: #f9fafb;
+  border: 1.5px solid var(--border-card);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 0.4rem;
+}
+
