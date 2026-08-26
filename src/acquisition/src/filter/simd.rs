@@ -1,6 +1,8 @@
 // Source: param-part3 storage-engine/src/filter/simd.rs (unchanged)
 // ARM64 NEON SIMD path; scalar fallback on all other architectures.
-use crate::filter::signature::{Candidate, FileType};
+use crate::filter::signature::Candidate;
+#[cfg(target_arch = "aarch64")]
+use crate::filter::signature::FileType;
 
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::*;
@@ -12,29 +14,27 @@ pub fn scan_signatures_simd(
     block_id: u64,
     block_offset: u64,
 ) -> Vec<Candidate> {
-    let mut candidates = Vec::new();
-
     #[cfg(target_arch = "aarch64")]
-    unsafe {
-        for (pattern, file_type) in [
-            (b"\xFF\xD8\xFF".as_slice(), FileType::Jpeg),
-            (b"\x89PNG".as_slice(),      FileType::Png),
-            (b"%PDF".as_slice(),         FileType::Pdf),
-            (b"PK\x03\x04".as_slice(),  FileType::Zip),
-        ] {
-            scan_pattern_neon(data, pattern, file_type, source,
-                              region_id, block_id, block_offset, &mut candidates);
+    let mut candidates = {
+        let mut list = Vec::new();
+        unsafe {
+            for (pattern, file_type) in [
+                (b"\xFF\xD8\xFF".as_slice(), FileType::Jpeg),
+                (b"\x89PNG".as_slice(),      FileType::Png),
+                (b"%PDF".as_slice(),         FileType::Pdf),
+                (b"PK\x03\x04".as_slice(),  FileType::Zip),
+            ] {
+                scan_pattern_neon(data, pattern, file_type, source,
+                                  region_id, block_id, block_offset, &mut list);
+            }
         }
-    }
+        list
+    };
 
     #[cfg(not(target_arch = "aarch64"))]
-    {
-        // On non-NEON platforms fall back to the baseline scanner so the
-        // function still returns correct results.
-        candidates = crate::filter::signature::scan_signatures(
-            data, source, region_id, block_id, block_offset,
-        );
-    }
+    let mut candidates = crate::filter::signature::scan_signatures(
+        data, source, region_id, block_id, block_offset,
+    );
 
     candidates.sort_by_key(|c| c.absolute_offset);
     candidates

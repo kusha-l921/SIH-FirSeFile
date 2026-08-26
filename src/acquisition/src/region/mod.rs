@@ -3,7 +3,9 @@ pub mod prioritizer;
 
 pub use prioritizer::RegionPrioritizer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RegionPriority {
     Low      = 1,
     Medium   = 2,
@@ -11,7 +13,7 @@ pub enum RegionPriority {
     Critical = 4,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Region {
     pub id: u64,
     pub start_offset: u64,

@@ -30,23 +30,39 @@ removed.  The engine is self-contained and has no external dependencies beyond
 the Python standard library.
 """
 
+import sys
+import json
 import struct
 import hashlib
 import binascii
 import shlex
 import tempfile
+import argparse
 from pathlib import Path
-from typing import List, Dict, Optional, Generator, BinaryIO
+from typing import List, Dict, Optional, Generator, BinaryIO, Any
 
-from btrfs_structs import (
-    BTRFS_MAGIC, BTRFS_SUPER_OFFSET, BTRFS_SUPER_MIRROR_OFFSETS,
-    BTRFS_NODE_HEADER_SIZE, BTRFS_ITEM_SIZE, BTRFS_INODE_ITEM_SIZE,
-    BTRFS_INODE_ITEM_KEY, BTRFS_INODE_REF_KEY,
-    BTRFS_DIR_ITEM_KEY, BTRFS_EXTENT_DATA_KEY,
-    BTRFS_ROOT_ITEM_KEY, BTRFS_ROOT_REF_KEY,
-    BtrfsSuperblock, BtrfsInode, BtrfsSnapshot, CarvedFile,
-    _ts, mode_to_str, detect_file_type,
-)
+try:
+    from src.recovery.btrfs.btrfs_structs import (
+        BTRFS_MAGIC, BTRFS_SUPER_OFFSET, BTRFS_SUPER_MIRROR_OFFSETS,
+        BTRFS_NODE_HEADER_SIZE, BTRFS_ITEM_SIZE, BTRFS_INODE_ITEM_SIZE,
+        BTRFS_INODE_ITEM_KEY, BTRFS_INODE_REF_KEY,
+        BTRFS_DIR_ITEM_KEY, BTRFS_EXTENT_DATA_KEY,
+        BTRFS_ROOT_ITEM_KEY, BTRFS_ROOT_REF_KEY,
+        BtrfsSuperblock, BtrfsInode, BtrfsSnapshot, CarvedFile,
+        RecoveredMetadataModel, RecoveredFileModel,
+        _ts, mode_to_str, detect_file_type,
+    )
+except (ImportError, ModuleNotFoundError):
+    from btrfs_structs import (
+        BTRFS_MAGIC, BTRFS_SUPER_OFFSET, BTRFS_SUPER_MIRROR_OFFSETS,
+        BTRFS_NODE_HEADER_SIZE, BTRFS_ITEM_SIZE, BTRFS_INODE_ITEM_SIZE,
+        BTRFS_INODE_ITEM_KEY, BTRFS_INODE_REF_KEY,
+        BTRFS_DIR_ITEM_KEY, BTRFS_EXTENT_DATA_KEY,
+        BTRFS_ROOT_ITEM_KEY, BTRFS_ROOT_REF_KEY,
+        BtrfsSuperblock, BtrfsInode, BtrfsSnapshot, CarvedFile,
+        RecoveredMetadataModel, RecoveredFileModel,
+        _ts, mode_to_str, detect_file_type,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +71,16 @@ from btrfs_structs import (
 # ---------------------------------------------------------------------------
 
 FILE_SIGNATURES: Dict[str, Dict] = {
-    'jpg':  {'header': b'\xff\xd8\xff',              'footer': b'\xff\xd9'},
-    'png':  {'header': b'\x89PNG\r\n\x1a\n',         'footer': b'IEND\xaeB`\x82'},
-    'pdf':  {'header': b'%PDF-',                     'footer': b'%%EOF'},
-    'zip':  {'header': b'PK\x03\x04',                'footer': None},
-    'gif':  {'header': b'GIF8',                      'footer': None},
-    'mp3':  {'header': b'ID3',                       'footer': None},
-    'mp4':  {'header': b'\x00\x00\x00\x18ftyp',      'footer': None},
-    'doc':  {'header': b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1', 'footer': None},
-    'elf':  {'header': b'\x7fELF',                   'footer': None},
+    'jpg':     {'header': b'\xff\xd8\xff',              'footer': b'\xff\xd9'},
+    'png':     {'header': b'\x89PNG\r\n\x1a\n',         'footer': b'IEND\xaeB`\x82'},
+    'pdf':     {'header': b'%PDF-',                     'footer': b'%%EOF'},
+    'zip':     {'header': b'PK\x03\x04',                'footer': None},
+    'gif':     {'header': b'GIF8',                      'footer': None},
+    'mp3':     {'header': b'ID3',                       'footer': None},
+    'mp4':     {'header': b'\x00\x00\x00\x18ftyp',      'footer': None},
+    'doc':     {'header': b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1', 'footer': None},
+    'elf':     {'header': b'\x7fELF',                   'footer': None},
+    'sqlite':  {'header': b'SQLite format 3\x00',       'footer': None},
 }
 
 
@@ -607,3 +624,129 @@ class BtrfsEngine:
             'snapshots_found':  len(self.snapshots),
             'carved_files':     len(self.carved),
         }
+
+    # ------------------------------------------------------------------
+    # 12. Structured Pipeline Adapter Method
+    # ------------------------------------------------------------------
+
+    def recover_structured(self) -> Dict[str, Any]:
+        """
+        Executes full Btrfs recovery (structural + carving) and returns
+        the result adhering to the common forensic data contracts.
+        """
+        is_fs = self.is_btrfs()
+        sb = self.parse_superblock() if is_fs else None
+        snaps = self.list_snapshots() if sb else []
+        inodes = list(self.scan_inodes()) if sb else []
+        carved = list(self.carve_free_space())
+
+        recovered_files: List[Dict[str, Any]] = []
+
+        # Process deleted structural inodes
+        for ino in inodes:
+            if ino.is_deleted or ino.nlink == 0:
+                meta = self.inode_metadata(ino)
+                recovered_files.append({
+                    "file_id": f"btrfs:ino_{ino.inode_number}",
+                    "filename": ino.filename or f"deleted_ino_{ino.inode_number}",
+                    "file_type": meta.get("file_type") or "unknown",
+                    "file_size": ino.size,
+                    "ordered_fragments": [],
+                    "metadata": {
+                        "filename": ino.filename,
+                        "file_size": ino.size,
+                        "created": meta.get("otime"),
+                        "modified": meta.get("mtime"),
+                        "accessed": meta.get("atime"),
+                        "changed": meta.get("ctime"),
+                        "deleted_if_available": True,
+                        "permissions": meta.get("permissions", "-rw-r--r--"),
+                        "ownership": {"uid": ino.uid, "gid": ino.gid},
+                        "filesystem": "btrfs",
+                        "source_locations": [],
+                        "additional_attributes": {
+                            "generation": ino.generation,
+                            "nlink": ino.nlink,
+                            "snapshot_id": ino.snapshot_id,
+                        },
+                    },
+                    "source_locations": [],
+                    "recovery_method": "btrfs_structural",
+                    "confidence": ino.confidence,
+                    "sha256": ino.checksum,
+                })
+
+        # Process carved files
+        for cf in carved:
+            recovered_files.append({
+                "file_id": f"btrfs:carved_0x{cf.offset:x}",
+                "filename": cf.filename,
+                "file_type": cf.file_type,
+                "file_size": cf.size,
+                "ordered_fragments": [{
+                    "fragment_id": f"frag_0x{cf.offset:x}",
+                    "source_image": str(self.image_path),
+                    "source_offset": cf.offset,
+                    "length": cf.size,
+                    "filesystem": "btrfs",
+                    "region_id": 0,
+                    "block_id": cf.offset // 4096,
+                    "sha256": cf.sha256,
+                    "recovery_method": "btrfs_carved",
+                    "confidence": cf.confidence,
+                }],
+                "metadata": {
+                    "filename": cf.filename,
+                    "file_size": cf.size,
+                    "created": None,
+                    "modified": None,
+                    "accessed": None,
+                    "changed": None,
+                    "deleted_if_available": True,
+                    "permissions": "-rw-r--r--",
+                    "ownership": {"uid": 0, "gid": 0},
+                    "filesystem": "btrfs",
+                    "source_locations": [cf.offset],
+                    "additional_attributes": {
+                        "crc32c": cf.crc32c,
+                        "footer_found": cf.footer_found,
+                        "confidence_notes": cf.confidence_notes,
+                    },
+                },
+                "source_locations": [cf.offset],
+                "recovery_method": "btrfs_carved",
+                "confidence": cf.confidence,
+                "sha256": cf.sha256,
+            })
+
+        return {
+            "filesystem": "btrfs",
+            "is_valid_filesystem": is_fs,
+            "summary": self.get_summary(),
+            "recovered_files": recovered_files,
+            "unresolved_fragments": [],
+        }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Btrfs Forensic Recovery CLI")
+    parser.add_argument("--image", type=str, required=True, help="Path to evidence disk image")
+    parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+
+    args = parser.parse_args()
+
+    with BtrfsEngine(args.image) as engine:
+        result = engine.recover_structured()
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Btrfs Recovery Result for: {args.image}")
+            print(f"Valid Btrfs: {result['is_valid_filesystem']}")
+            print(f"Total Inodes: {result['summary']['total_inodes']}")
+            print(f"Deleted Inodes: {result['summary']['deleted_inodes']}")
+            print(f"Carved Files: {result['summary']['carved_files']}")
+            print(f"Total Recovered Entities: {len(result['recovered_files'])}")
+
+
+if __name__ == "__main__":
+    main()

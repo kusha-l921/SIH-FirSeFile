@@ -104,7 +104,7 @@ impl BatchReader {
                 anyhow::bail!("Read failed for request {}: {}", cqe.user_data(), result);
             }
             let index = cqe.user_data() as usize;
-            buffers[index].truncate(result as usize);
+            buffers[index].resize(result as usize, 0);
             let offset = start_offset + index as u64 * block_size as u64;
             blocks.push(Block::new(index as u64, offset, buffers[index].clone()));
         }
@@ -141,7 +141,7 @@ impl BatchReader {
                 .context("seek failed")?;
             let mut buf = vec![0u8; block_size];
             let n = file.read(&mut buf).context("read failed")?;
-            buf.truncate(n);
+            buf.resize(n, 0);
             blocks.push(Block::new(index as u64, offset, buf));
         }
         Ok(blocks)

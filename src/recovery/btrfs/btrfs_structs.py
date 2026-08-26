@@ -13,7 +13,7 @@ No XFS, no frontend, no API dependencies.
 import struct
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +185,40 @@ class CarvedFile:
 
 
 # ---------------------------------------------------------------------------
+# Common Contract Types for Recovery Pipeline Integration
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RecoveredMetadataModel:
+    filename: Optional[str]
+    file_size: int
+    created: Optional[str]
+    modified: Optional[str]
+    accessed: Optional[str]
+    changed: Optional[str]
+    deleted_if_available: bool
+    permissions: str
+    ownership: Dict[str, int]
+    filesystem: str
+    source_locations: List[int]
+    additional_attributes: Dict[str, Any]
+
+
+@dataclass
+class RecoveredFileModel:
+    file_id: str
+    filename: Optional[str]
+    file_type: Optional[str]
+    file_size: int
+    ordered_fragments: List[Dict[str, Any]]
+    metadata: RecoveredMetadataModel
+    source_locations: List[int]
+    recovery_method: str
+    confidence: float
+    sha256: Optional[str]
+
+
+# ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
@@ -233,6 +267,7 @@ def detect_file_type(data: bytes) -> Optional[str]:
         (b'ID3',                   'mp3'),
         (b'\x00\x00\x00\x18ftyp', 'mp4'),
         (b'\xd0\xcf\x11\xe0',     'doc'),
+        (b'SQLite format 3\x00',   'sqlite'),
     ]
     for sig, ftype in MAGIC:
         if data[:len(sig)] == sig:

@@ -126,10 +126,10 @@ fn acquisition_extracts_raw_fragment_with_provenance() {
 
     // Convert to shared contract type consumed by downstream recovery
     let raw = RawFragment::from_fragment(frag);
-    assert_eq!(raw.source, "test.img");
-    assert_eq!(raw.absolute_offset, 128);
+    assert_eq!(raw.source_image, "test.img");
+    assert_eq!(raw.source_offset, 128);
     assert_eq!(raw.length, 4);
-    assert_eq!(&raw.data, b"%PDF");
+    assert_eq!(&raw.raw_bytes, b"%PDF");
 }
 
 // -----------------------------------------------------------------------

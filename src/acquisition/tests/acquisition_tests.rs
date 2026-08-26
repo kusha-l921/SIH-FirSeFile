@@ -219,14 +219,16 @@ fn raw_fragment_from_fragment_preserves_all_fields() {
     };
 
     let raw = RawFragment::from_fragment(frag);
-    assert_eq!(raw.source, "disk.img");
+    assert_eq!(raw.source_image, "disk.img");
     assert_eq!(raw.region_id, 3);
     assert_eq!(raw.block_id, 7);
     assert_eq!(raw.block_offset, 28672);
-    assert_eq!(raw.absolute_offset, 28680);
+    assert_eq!(raw.source_offset, 28680);
     assert_eq!(raw.length, 8);
     assert_eq!(raw.sha256, "abc123");
-    assert_eq!(raw.data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(raw.raw_bytes, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+    assert_eq!(raw.confidence, 1.0);
+    assert_eq!(raw.recovery_method, "signature_scan");
 }
 
 // -----------------------------------------------------------------------

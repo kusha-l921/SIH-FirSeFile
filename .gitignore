@@ -11,8 +11,16 @@ experiments/checkpoints/
 local_backups/
 .ipynb_checkpoints/
 
-# Tauri / Rust / Node (Gui_CLI)
+# Rust targets
+target/
+target_tmp/
 Gui_CLI/src-tauri/target
+blockchain_ledger/target/
 Gui_CLI/node_modules
 Gui_CLI/dist
 Gui_CLI/src-tauri/gen
+
+# Test images
+tests/fixtures/*.img
+tests/fixtures/*.dd
+tests/fixtures/*.raw
