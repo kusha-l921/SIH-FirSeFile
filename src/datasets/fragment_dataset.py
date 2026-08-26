@@ -150,6 +150,80 @@ def generate_synthetic_fragment_manifest(
     return manifest
 
 
+def create_manifest_from_fft75_directory(
+    dataset_dir: str,
+    samples_per_class: Optional[int] = None,
+    fragment_size: int = 512,
+    max_fragments_per_file: int = 50,
+    seed: int = 42
+) -> List[Dict[str, any]]:
+    """
+    Extract 512-byte fragments from actual real FFT-75 files on disk,
+    recording source file origin for strict leak-free partitioning.
+    
+    Supports both directory structures:
+      1. Subdirectories per class: dataset_dir/pdf/file1.pdf
+      2. Flat directory with extension: dataset_dir/file1.pdf
+    """
+    if not os.path.exists(dataset_dir):
+        raise FileNotFoundError(f"FFT-75 dataset directory not found at: {dataset_dir}")
+
+    rng = random.Random(seed)
+    manifest = []
+    class_fragments: Dict[str, List[Dict[str, any]]] = {cls_name: [] for cls_name in FFT75_CLASSES}
+
+    # Discover files
+    for root, _, files in os.walk(dataset_dir):
+        for fname in files:
+            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+            parent_dir = os.path.basename(root).lower()
+            
+            cls_name = None
+            if ext in CLASS_TO_IDX:
+                cls_name = ext
+            elif parent_dir in CLASS_TO_IDX:
+                cls_name = parent_dir
+                
+            if cls_name is None:
+                continue
+
+            file_path = os.path.join(root, fname)
+            try:
+                file_size = os.path.getsize(file_path)
+                if file_size < fragment_size:
+                    continue
+                    
+                with open(file_path, "rb") as f:
+                    content = f.read()
+                    
+                n_frags = min(len(content) // fragment_size, max_fragments_per_file)
+                for chunk_idx in range(n_frags):
+                    chunk = content[chunk_idx * fragment_size : (chunk_idx + 1) * fragment_size]
+                    if len(chunk) == fragment_size:
+                        class_fragments[cls_name].append({
+                            "fragment_id": f"{cls_name}_{fname}_{chunk_idx:04d}",
+                            "source_file_id": f"{cls_name}_{fname}",
+                            "class_name": cls_name,
+                            "class_idx": CLASS_TO_IDX[cls_name],
+                            "raw_bytes": chunk,
+                            "file_path": file_path,
+                            "fragment_size": fragment_size
+                        })
+            except Exception as e:
+                continue
+
+    # Stratified balance per class if requested
+    for cls_name, frags in class_fragments.items():
+        if samples_per_class is not None and len(frags) > samples_per_class:
+            rng.shuffle(frags)
+            manifest.extend(frags[:samples_per_class])
+        else:
+            manifest.extend(frags)
+
+    print(f"Loaded {len(manifest)} real fragments across {len(class_fragments)} classes from {dataset_dir}")
+    return manifest
+
+
 def create_fragment_dataloaders(
     train_manifest: List[Dict[str, any]],
     val_manifest: List[Dict[str, any]],
