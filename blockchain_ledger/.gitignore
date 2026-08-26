@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+
+# Cargo
+Cargo.lock
+**/*.cargo-ok
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.whl
+dist/
+build/
+.eggs/
+*.egg-info/
+.venv/
+env/
+venv/
+
+# Forensic tool keystores and test chains
+*.jsonl
+.forensic_tool/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

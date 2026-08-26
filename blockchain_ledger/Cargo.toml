@@ -1,0 +1,3 @@
+[workspace]
+members = ["core", "cli", "pyo3-bindings"]
+resolver = "2"
