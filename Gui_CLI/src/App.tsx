@@ -60,7 +60,6 @@ type RecoveryEventPayload = {
   file_sha256?: string | null;
   recovered_file_sha256?: string | null;
   size?: number;
-  metadata?: any;
 };
 
 type LedgerBlock = {
@@ -86,17 +85,10 @@ type MlResultSummary = {
   ledger_block_index: number | null;
 };
 
-function confidenceBadgeClass(c: number | null) {
-  if (c === null || c === undefined) return "badge badge-neutral";
-  if (c >= 90 || (c <= 1.0 && c >= 0.9)) return "badge badge-success";
-  if (c >= 70 || (c <= 1.0 && c >= 0.7)) return "badge badge-warning";
-  return "badge badge-danger";
-}
-
 function formatConfidence(c: number | null) {
   if (c === null || c === undefined) return "N/A";
-  if (c <= 1.0) return `${(c * 100).toFixed(1)}%`;
-  return `${c.toFixed(1)}%`;
+  if (c <= 1.0) return `${(c * 100).toFixed(0)}%`;
+  return `${c.toFixed(0)}%`;
 }
 
 function formatBytes(bytes: number) {
@@ -107,10 +99,10 @@ function formatBytes(bytes: number) {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"overview" | "ml" | "ledger" | "setup">("overview");
+  const [tab, setTab] = useState<"files" | "ml" | "ledger" | "scan">("files");
 
   const [files, setFiles] = useState<RecoveredFile[]>([]);
-  const [selected, setSelected] = useState<RecoveredFile | null>(null);
+  const [selectedFile, setSelectedFile] = useState<RecoveredFile | null>(null);
   const [status, setStatus] = useState<CaseStatus | null>(null);
   const [mlResults, setMlResults] = useState<MlResultSummary[]>([]);
   const [selectedMl, setSelectedMl] = useState<MlResultSummary | null>(null);
@@ -122,7 +114,7 @@ export default function App() {
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   const [caseId, setCaseId] = useState("CASE-5B75FCB9");
-  const [investigator, setInvestigator] = useState("Forensic Examiner 01");
+  const [investigator, setInvestigator] = useState("Forensic Analyst");
   const [imagePath, setImagePath] = useState<string>("tests/fixtures/xfs_deleted_synthetic.img");
 
   const [reportPath, setReportPath] = useState<string | null>(null);
@@ -142,7 +134,6 @@ export default function App() {
       if (resFiles.ok) {
         const data = await resFiles.json();
         setFiles(data);
-        if (data.length > 0 && !selected) setSelected(data[0]);
       }
 
       const resLedger = await fetch(`${API_BASE}/api/ledger`);
@@ -155,20 +146,17 @@ export default function App() {
       if (resMl.ok) {
         const data = await resMl.json();
         setMlResults(data);
-        if (data.length > 0 && !selectedMl) setSelectedMl(data[0]);
       }
     } catch {
       try {
         const f = await invoke<RecoveredFile[]>("list_recovered_files");
         setFiles(f);
-        if (f.length > 0 && !selected) setSelected(f[0]);
         const s = await invoke<CaseStatus>("get_case_status");
         setStatus(s);
         const l = await invoke<LedgerBlock[]>("get_ledger");
         setLedger(l);
         const m = await invoke<MlResultSummary[]>("get_ml_results");
         setMlResults(m);
-        if (m.length > 0 && !selectedMl) setSelectedMl(m[0]);
         setBackendConnected(true);
       } catch {
         setBackendConnected(false);
@@ -185,7 +173,7 @@ export default function App() {
     if (!target) return;
 
     setScanning(true);
-    setScanMessage(`[ACQUISITION] Initiating forensic recovery on: ${target}`);
+    setScanMessage(`Scanning evidence image: ${target} ...`);
     try {
       const res = await fetch(`${API_BASE}/api/scan`, {
         method: "POST",
@@ -194,22 +182,22 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setScanMessage(`[SUCCESS] Acquisition complete. ${data.total_files_recovered} artifacts recovered and chained.`);
+        setScanMessage(`Recovery completed: ${data.total_files_recovered} files recovered and logged.`);
         await refreshData();
-        setTab("overview");
+        setTab("files");
       } else {
         const err = await res.json();
-        setScanMessage(`[ERROR] Execution failure: ${err.error || "Unknown error"}`);
+        setScanMessage(`Scan error: ${err.error || "Scan failed"}`);
       }
     } catch (e: any) {
       try {
         const s = await invoke<CaseStatus>("scan_image", { imagePath: target });
         setStatus(s);
-        setScanMessage(`[TAURI] Scan executed via native core.`);
+        setScanMessage(`Recovery executed via native core.`);
         await refreshData();
-        setTab("overview");
+        setTab("files");
       } catch (err: any) {
-        setScanMessage(`[SYSTEM] Engine unreachable: ${e.message || err.toString()}`);
+        setScanMessage(`API offline: ${e.message || err.toString()}`);
       }
     } finally {
       setScanning(false);
@@ -225,12 +213,12 @@ export default function App() {
         const data = await res.json();
         setVerifyResult({ valid: data.valid, reason: data.reason });
       } else {
-        setVerifyResult({ valid: false, reason: "Verification API error" });
+        setVerifyResult({ valid: false, reason: "API verification error" });
       }
     } catch {
       try {
         const valid = await invoke<boolean>("verify_chain");
-        setVerifyResult({ valid, reason: valid ? null : "Chain integrity mismatch" });
+        setVerifyResult({ valid, reason: valid ? null : "Chain verification failed" });
       } catch {
         setVerifyResult({ valid: true, reason: null });
       }
@@ -248,7 +236,7 @@ export default function App() {
       });
       if (selected) setImagePath(selected as string);
     } catch {
-      const path = prompt("Specify absolute image file path (.img, .raw, .dd):", imagePath);
+      const path = prompt("Enter evidence image path (.img, .raw, .dd):", imagePath);
       if (path) setImagePath(path);
     }
   };
@@ -278,553 +266,465 @@ export default function App() {
     }
   };
 
-  const progressPct = status && status.total_blocks > 0
-    ? Math.round((status.blocks_processed / status.total_blocks) * 100)
-    : 100;
-
   return (
-    <div className="app-shell">
-      {/* Precision Header */}
-      <header className="topbar">
-        <div className="topbar-left">
-          <div className="system-tag">
-            <span className="sys-name">FIRSEFILE</span>
-            <span className="sys-mode">FORENSIC SUITE</span>
+    <div className="layout-root">
+      {/* Centered Clean Header */}
+      <header className="site-header">
+        <div className="header-inner">
+          <div className="brand">
+            <span className="brand-title">FirSeFile</span>
+            <span className="brand-tag">{status?.filesystem || "Forensic FS"}</span>
           </div>
-          <span className="sys-divider">|</span>
-          <span className="sys-kernel">FS_RECOVERY_ENGINE v2.0</span>
-        </div>
 
-        <nav className="nav-group">
-          <button
-            className={`nav-item ${tab === "overview" ? "active" : ""}`}
-            onClick={() => setTab("overview")}
-          >
-            <span className="nav-label">RECOVERED FILES</span>
-            <span className="nav-count">{files.length}</span>
-          </button>
-          <button
-            className={`nav-item ${tab === "ml" ? "active" : ""}`}
-            onClick={() => setTab("ml")}
-          >
-            <span className="nav-label">ML CLASSIFIER</span>
-            <span className="nav-count">{mlResults.length}</span>
-          </button>
-          <button
-            className={`nav-item ${tab === "ledger" ? "active" : ""}`}
-            onClick={() => setTab("ledger")}
-          >
-            <span className="nav-label">CUSTODY LEDGER</span>
-            <span className="nav-count">{ledger.length}</span>
-          </button>
-          <button
-            className={`nav-item ${tab === "setup" ? "active" : ""}`}
-            onClick={() => setTab("setup")}
-          >
-            <span className="nav-label">CONFIGURATION</span>
-          </button>
-        </nav>
+          <nav className="tab-nav">
+            <button
+              className={`nav-tab ${tab === "files" ? "active" : ""}`}
+              onClick={() => setTab("files")}
+            >
+              Recovered Files <span className="tab-badge">{files.length}</span>
+            </button>
+            <button
+              className={`nav-tab ${tab === "ml" ? "active" : ""}`}
+              onClick={() => setTab("ml")}
+            >
+              ML Reassembly <span className="tab-badge">{mlResults.length}</span>
+            </button>
+            <button
+              className={`nav-tab ${tab === "ledger" ? "active" : ""}`}
+              onClick={() => setTab("ledger")}
+            >
+              Audit Ledger <span className="tab-badge">{ledger.length}</span>
+            </button>
+            <button
+              className={`nav-tab ${tab === "scan" ? "active" : ""}`}
+              onClick={() => setTab("scan")}
+            >
+              New Scan
+            </button>
+          </nav>
 
-        <div className="topbar-right">
-          <div className={`connection-pill ${backendConnected ? "connected" : "standalone"}`}>
-            <span className="pulse-dot"></span>
-            <span className="conn-text">{backendConnected ? "REST ENGINE ONLINE" : "STANDALONE"}</span>
+          <div className="header-status">
+            <span className={`status-dot ${backendConnected ? "live" : "ready"}`} />
+            <span className="status-label">{backendConnected ? "Live API" : "Standalone"}</span>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="workspace">
-        {/* TAB 1: RECOVERED FILES & OVERVIEW */}
-        {tab === "overview" && (
-          <div className="view-panel">
-            {/* Header Section */}
-            <div className="panel-header">
-              <div className="title-block">
-                <span className="sub-tag">EVIDENCE RECONSTRUCTION</span>
-                <h1 className="panel-title">Extracted Filesystem Artifacts</h1>
+      {/* Main Centered Content Feed */}
+      <main className="content-container">
+        {/* TAB 1: RECOVERED ARTIFACTS FEED */}
+        {tab === "files" && (
+          <div className="feed-view">
+            <div className="feed-header">
+              <div>
+                <h1 className="feed-title">Recovered Forensic Files</h1>
+                <p className="feed-subtitle">
+                  Files reconstructed from deleted filesystem inodes, extents, and carved fragment clusters.
+                </p>
               </div>
-              <div className="action-strip">
+              <div className="header-actions">
                 <button
-                  className="btn-cyber btn-primary-cyber"
+                  className="card-btn primary"
                   onClick={() => handleRunScan("tests/fixtures/xfs_deleted_synthetic.img")}
                   disabled={scanning}
                 >
-                  {scanning ? "PROCESSING..." : "SCAN XFS IMAGE"}
+                  {scanning ? "Scanning..." : "Quick XFS Scan"}
                 </button>
                 <button
-                  className="btn-cyber btn-secondary-cyber"
+                  className="card-btn secondary"
                   onClick={() => handleRunScan("tests/fixtures/btrfs_deleted_synthetic.img")}
                   disabled={scanning}
                 >
-                  SCAN BTRFS IMAGE
+                  Quick Btrfs Scan
                 </button>
               </div>
             </div>
 
             {scanMessage && (
-              <div className="console-banner">
-                <span className="console-prompt">&gt;</span>
-                <span className="console-text">{scanMessage}</span>
-                <button className="console-dismiss" onClick={() => setScanMessage(null)}>DISMISS</button>
+              <div className="alert-box">
+                <span>{scanMessage}</span>
+                <button className="alert-close" onClick={() => setScanMessage(null)}>Dismiss</button>
               </div>
             )}
 
-            {/* Metrics Bar */}
-            <div className="metrics-strip">
-              <div className="metric-cell">
-                <span className="m-title">CASE IDENTIFIER</span>
-                <span className="m-data mono-text">{status?.case_id || caseId}</span>
-                <span className="m-detail">FS TYPE: {status?.filesystem || "XFS"}</span>
-              </div>
-              <div className="metric-cell">
-                <span className="m-title">TOTAL ARTIFACTS</span>
-                <span className="m-data">{files.length}</span>
-                <span className="m-detail">{files.filter(f => f.validation_is_valid !== false).length} VALIDATED STRUCTURES</span>
-              </div>
-              <div className="metric-cell">
-                <span className="m-title">CARVED FRAGMENTS</span>
-                <span className="m-data">{files.filter(f => f.file_id.includes("carved")).length}</span>
-                <span className="m-detail">BYTE2IMAGE 2D ENCODED</span>
-              </div>
-              <div className="metric-cell">
-                <span className="m-title">CHAIN BLOCKS</span>
-                <span className="m-data">{ledger.length}</span>
-                <span className="m-detail">ED25519 SIGNED BLOCKS</span>
-              </div>
-              <div className="metric-cell">
-                <span className="m-title">SECTOR COVERAGE</span>
-                <span className="m-data">{progressPct}%</span>
-                <span className="m-detail">INODE &amp; EXTENT MAP</span>
-              </div>
-            </div>
-
-            {/* Content Grid */}
-            <div className="content-split">
-              {/* Table Column */}
-              <div className="panel-box table-container">
-                <div className="box-titlebar">
-                  <span className="box-heading">IDENTIFIED FORENSIC OBJECTS</span>
-                  <span className="box-meta">{files.length} ITEMS LOCATED</span>
-                </div>
-
-                <div className="table-viewport">
-                  <table className="forensic-table">
-                    <thead>
-                      <tr>
-                        <th>OBJECT / INODE</th>
-                        <th>FORMAT</th>
-                        <th>BYTE SIZE</th>
-                        <th>CARVING METHOD</th>
-                        <th>CONFIDENCE</th>
-                        <th>INTEGRITY</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {files.map((f) => (
-                        <tr
-                          key={f.file_id}
-                          className={selected?.file_id === f.file_id ? "row-active" : ""}
-                          onClick={() => setSelected(f)}
-                        >
-                          <td>
-                            <div className="obj-cell">
-                              <span className="obj-name">{f.filename}</span>
-                              <span className="obj-id mono-text">{f.file_id}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="format-tag">{f.file_type.toUpperCase()}</span>
-                          </td>
-                          <td className="mono-text">{formatBytes(f.size)}</td>
-                          <td>
-                            <span className="method-label">{f.recovery_method.replace(/_/g, " ")}</span>
-                          </td>
-                          <td>
-                            <span className={confidenceBadgeClass(f.confidence)}>
-                              {formatConfidence(f.confidence)}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`status-pill ${f.validation_is_valid !== false ? "status-valid" : "status-invalid"}`}>
-                              {f.validation_is_valid !== false ? "VALID" : "UNVERIFIED"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {files.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="empty-row">
-                            NO ARTIFACTS LOADED. INITIATE AN EVIDENCE SCAN TO EXTRACT OBJECTS.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Inspector Column */}
-              {selected && (
-                <div className="panel-box inspector-box">
-                  <div className="box-titlebar">
-                    <span className="box-heading">ARTIFACT INSPECTOR</span>
-                    <span className="box-meta mono-text">{selected.file_id}</span>
-                  </div>
-
-                  <div className="inspector-body">
-                    <div className="inspect-row">
-                      <span className="i-label">PRIMARY FILENAME</span>
-                      <span className="i-val mono-text bold">{selected.filename}</span>
+            {/* Centered Cards Feed (Matching Reference Image Aesthetic) */}
+            <div className="cards-feed">
+              {files.map((f) => {
+                const isSelected = selectedFile?.file_id === f.file_id;
+                return (
+                  <article
+                    key={f.file_id}
+                    className={`feed-card ${isSelected ? "card-selected" : ""}`}
+                    onClick={() => setSelectedFile(isSelected ? null : f)}
+                  >
+                    <div className="card-topline">
+                      <h2 className="card-heading">{f.filename}</h2>
+                      <span className="card-tag">{f.file_type.toUpperCase()}</span>
                     </div>
-                    <div className="inspect-row">
-                      <span className="i-label">DETECTED FORMAT</span>
-                      <span className="i-val">
-                        <span className="format-tag">{selected.file_type.toUpperCase()}</span>
-                      </span>
-                    </div>
-                    <div className="inspect-row">
-                      <span className="i-label">RAW BYTE LENGTH</span>
-                      <span className="i-val mono-text">{selected.size} bytes ({formatBytes(selected.size)})</span>
-                    </div>
-                    <div className="inspect-row">
-                      <span className="i-label">EXTRACTION PIPELINE</span>
-                      <span className="i-val">{selected.recovery_method}</span>
-                    </div>
-                    <div className="inspect-row">
-                      <span className="i-label">CERTAINTY SCORE</span>
-                      <span className="i-val">
-                        <span className={confidenceBadgeClass(selected.confidence)}>
-                          {formatConfidence(selected.confidence)}
+
+                    <p className="card-summary">
+                      Recovered via <strong>{f.recovery_method.replace(/_/g, " ")}</strong> from sector{" "}
+                      <code className="mono">{f.source_locations?.join(", ") || "0x00"}</code>. Format validation status:{" "}
+                      <strong>{f.validation_status || "VALID"}</strong>.
+                    </p>
+
+                    <div className="card-footer">
+                      <div className="meta-left">
+                        <span className="meta-item">
+                          <span className="meta-lbl">Type:</span> {f.file_type.toUpperCase()}
                         </span>
-                      </span>
-                    </div>
-                    <div className="inspect-row">
-                      <span className="i-label">DISK SECTOR OFFSET</span>
-                      <span className="i-val mono-text">{selected.source_locations?.join(", ") || "0x00000000"}</span>
-                    </div>
-                    <div className="inspect-row">
-                      <span className="i-label">SHA-256 CHECKSUM</span>
-                      <span className="i-val mono-text hash-text">{selected.sha256 || "PENDING"}</span>
-                    </div>
-
-                    <div className="box-subtitle">FILESYSTEM METADATA ATTRIBUTES</div>
-                    <div className="metadata-grid">
-                      <div className="meta-card">
-                        <span className="m-tag">MODIFIED</span>
-                        <span className="m-val mono-text">{selected.metadata?.modified || "N/A"}</span>
-                      </div>
-                      <div className="meta-card">
-                        <span className="m-tag">ACCESSED</span>
-                        <span className="m-val mono-text">{selected.metadata?.accessed || "N/A"}</span>
-                      </div>
-                      <div className="meta-card">
-                        <span className="m-tag">STATUS CHANGED</span>
-                        <span className="m-val mono-text">{selected.metadata?.changed || "N/A"}</span>
-                      </div>
-                      <div className="meta-card">
-                        <span className="m-tag">PERMISSIONS</span>
-                        <span className="m-val mono-text">{selected.metadata?.permissions || "-rw-r--r--"}</span>
-                      </div>
-                    </div>
-
-                    <div className="inspector-actions">
-                      <button className="btn-cyber btn-outline-cyber" onClick={() => setTab("ml")}>
-                        VIEW ML CLASSIFIER DETAILS
-                      </button>
-                      <button className="btn-cyber btn-outline-cyber" onClick={() => setTab("ledger")}>
-                        INSPECT LEDGER BLOCK
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: ML & REASSEMBLY */}
-        {tab === "ml" && (
-          <div className="view-panel">
-            <div className="panel-header">
-              <div className="title-block">
-                <span className="sub-tag">NEURAL SEQUENCE RECONSTRUCTION</span>
-                <h1 className="panel-title">Byte2Image &amp; Fragment Classification</h1>
-              </div>
-              <div className="pipeline-flow">
-                <span className="p-node done">512B BUFFER</span>
-                <span className="p-sep">&gt;</span>
-                <span className="p-node done">BYTE2IMAGE 256²</span>
-                <span className="p-sep">&gt;</span>
-                <span className="p-node done">SWIN-V2 / ZERO-TRAIN</span>
-                <span className="p-sep">&gt;</span>
-                <span className="p-node done">GRAPH REASSEMBLY</span>
-                <span className="p-sep">&gt;</span>
-                <span className="p-node done">FORMAT VALIDATOR</span>
-              </div>
-            </div>
-
-            <div className="content-split">
-              {/* List Column */}
-              <div className="panel-box">
-                <div className="box-titlebar">
-                  <span className="box-heading">CLASSIFIED FILE FRAGMENTS</span>
-                  <span className="box-meta">{mlResults.length} EVALUATED</span>
-                </div>
-
-                <div className="fragment-scroll">
-                  {mlResults.map((item) => (
-                    <div
-                      key={item.file_id}
-                      className={`fragment-item ${selectedMl?.file_id === item.file_id ? "item-active" : ""}`}
-                      onClick={() => setSelectedMl(item)}
-                    >
-                      <div className="f-top">
-                        <span className="format-tag">{item.predicted_class.toUpperCase()}</span>
-                        <span className={confidenceBadgeClass(item.ml_confidence)}>
-                          {formatConfidence(item.ml_confidence)}
+                        <span className="meta-sep">•</span>
+                        <span className="meta-item">
+                          <span className="meta-lbl">Size:</span> {formatBytes(f.size)}
+                        </span>
+                        <span className="meta-sep">•</span>
+                        <span className="meta-item">
+                          <span className="meta-lbl">Confidence:</span> {formatConfidence(f.confidence)}
+                        </span>
+                        <span className="meta-sep">•</span>
+                        <span className="meta-item">
+                          <span className="meta-lbl">Modified:</span> {f.metadata?.modified ? f.metadata.modified.split("T")[0] : "N/A"}
                         </span>
                       </div>
-                      <div className="f-id mono-text">{item.file_id}</div>
-                      <div className="f-status">
-                        <span>STATUS: {item.validation_status}</span>
-                        <span className="mono-text">SHA: {item.sha256.slice(0, 10)}...</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Inspector Column */}
-              {selectedMl && (
-                <div className="panel-box inspector-box">
-                  <div className="box-titlebar">
-                    <span className="box-heading">NEURAL PROBABILITY MATRIX</span>
-                    <span className="box-meta mono-text">{selectedMl.file_id}</span>
-                  </div>
-
-                  <div className="inspector-body">
-                    <div className="kpi-grid">
-                      <div className="kpi-box">
-                        <span className="kpi-label">PREDICTED CLASS</span>
-                        <span className="kpi-value cyan-highlight">{selectedMl.predicted_class.toUpperCase()}</span>
-                      </div>
-                      <div className="kpi-box">
-                        <span className="kpi-label">CONFIDENCE INDEX</span>
-                        <span className="kpi-value">{formatConfidence(selectedMl.ml_confidence)}</span>
-                      </div>
-                      <div className="kpi-box">
-                        <span className="kpi-label">RECONSTRUCTION</span>
-                        <span className="kpi-value">{(selectedMl.reconstruction_confidence * 100).toFixed(1)}%</span>
+                      <div className="meta-right">
+                        <span className="action-link">
+                          {isSelected ? "Hide Details ↑" : "Inspect Artifact →"}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="box-subtitle">TOP-5 FORMAT PROBABILITY DISTRIBUTION</div>
-                    <div className="prob-container">
-                      {selectedMl.top_k.map((pred) => (
-                        <div key={pred.class_name} className="prob-item">
-                          <span className="prob-tag mono-text">{pred.class_name.toUpperCase()}</span>
-                          <div className="prob-bar-rail">
-                            <div
-                              className="prob-bar-fill"
-                              style={{ width: `${Math.max(4, pred.probability * 100)}%` }}
-                            />
+                    {/* Expandable Details Drawer */}
+                    {isSelected && (
+                      <div className="card-drawer">
+                        <div className="drawer-grid">
+                          <div className="drawer-cell">
+                            <span className="d-label">Object ID:</span>
+                            <span className="d-val mono">{f.file_id}</span>
                           </div>
-                          <span className="prob-val mono-text">{(pred.probability * 100).toFixed(2)}%</span>
+                          <div className="drawer-cell">
+                            <span className="d-label">Filesystem:</span>
+                            <span className="d-val">{f.filesystem.toUpperCase()}</span>
+                          </div>
+                          <div className="drawer-cell">
+                            <span className="d-label">Permissions:</span>
+                            <span className="d-val mono">{f.metadata?.permissions || "-rw-r--r--"}</span>
+                          </div>
+                          <div className="drawer-cell">
+                            <span className="d-label">Owner:</span>
+                            <span className="d-val mono">{f.metadata?.owner || "uid:1000 gid:1000"}</span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="box-subtitle">STRUCTURAL VALIDATION RESULTS</div>
-                    <div className="validation-pane">
-                      <div className="val-title-row">
-                        <span className={`status-pill ${selectedMl.validation_is_valid ? "status-valid" : "status-warning"}`}>
-                          {selectedMl.validation_status}
-                        </span>
-                        <span className="mono-text val-score">REASSEMBLY SCORE: {(selectedMl.reconstruction_confidence * 100).toFixed(1)}%</span>
+                        <div className="hash-row">
+                          <span className="d-label">SHA-256 Digest:</span>
+                          <code className="d-hash mono">{f.sha256 || "N/A"}</code>
+                        </div>
+
+                        <div className="drawer-actions">
+                          <button
+                            className="card-btn small secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTab("ml");
+                            }}
+                          >
+                            Analyze in ML Pipeline →
+                          </button>
+                          <button
+                            className="card-btn small secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTab("ledger");
+                            }}
+                          >
+                            View Custody Block →
+                          </button>
+                        </div>
                       </div>
-                      <p className="val-desc">
-                        Format validator verified structural binary boundaries, internal markers (headers/trailers/chunks),
-                        and B-tree / container integrity against standard forensic specifications.
-                      </p>
-                      <div className="inspect-row">
-                        <span className="i-label">RECONSTRUCTED SHA-256</span>
-                        <span className="i-val mono-text hash-text">{selectedMl.sha256}</span>
-                      </div>
-                    </div>
-                  </div>
+                    )}
+                  </article>
+                );
+              })}
+
+              {files.length === 0 && (
+                <div className="empty-card">
+                  <h3>No Files Loaded</h3>
+                  <p>Run a forensic recovery scan to reconstruct filesystem files and carved artifacts.</p>
+                  <button
+                    className="card-btn primary"
+                    onClick={() => handleRunScan("tests/fixtures/xfs_deleted_synthetic.img")}
+                  >
+                    Run XFS Test Scan
+                  </button>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 3: BLOCKCHAIN LEDGER */}
-        {tab === "ledger" && (
-          <div className="view-panel">
-            <div className="panel-header">
-              <div className="title-block">
-                <span className="sub-tag">TAMPER-PROOF AUDIT TRAIL</span>
-                <h1 className="panel-title">Cryptographic Custody Ledger</h1>
+        {/* TAB 2: ML & REASSEMBLY FEED */}
+        {tab === "ml" && (
+          <div className="feed-view">
+            <div className="feed-header">
+              <div>
+                <h1 className="feed-title">ML Fragment Classifier &amp; Reassembly</h1>
+                <p className="feed-subtitle">
+                  Byte2Image 2D representation, Swin Transformer V2 tiny inference, and graph sequence ordering.
+                </p>
               </div>
-              <div className="action-strip">
+            </div>
+
+            <div className="cards-feed">
+              {mlResults.map((item) => {
+                const isSelected = selectedMl?.file_id === item.file_id;
+                return (
+                  <article
+                    key={item.file_id}
+                    className={`feed-card ${isSelected ? "card-selected" : ""}`}
+                    onClick={() => setSelectedMl(isSelected ? null : item)}
+                  >
+                    <div className="card-topline">
+                      <h2 className="card-heading">{item.file_id}</h2>
+                      <span className="card-tag">{item.predicted_class.toUpperCase()}</span>
+                    </div>
+
+                    <p className="card-summary">
+                      Predicted classification: <strong>{item.predicted_class.toUpperCase()}</strong> with{" "}
+                      <strong>{formatConfidence(item.ml_confidence)}</strong> Bayesian confidence. Structural format integrity:{" "}
+                      <strong>{item.validation_status}</strong>.
+                    </p>
+
+                    <div className="card-footer">
+                      <div className="meta-left">
+                        <span className="meta-item">
+                          <span className="meta-lbl">Model:</span> Byte2Image + Swin-V2
+                        </span>
+                        <span className="meta-sep">•</span>
+                        <span className="meta-item">
+                          <span className="meta-lbl">Reconstruction Score:</span> {(item.reconstruction_confidence * 100).toFixed(0)}%
+                        </span>
+                        <span className="meta-sep">•</span>
+                        <span className="meta-item">
+                          <span className="meta-lbl">Valid:</span> {item.validation_is_valid ? "Yes" : "Partial"}
+                        </span>
+                      </div>
+
+                      <div className="meta-right">
+                        <span className="action-link">
+                          {isSelected ? "Hide Probabilities ↑" : "Inspect Distribution →"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Probability Distribution Drawer */}
+                    {isSelected && (
+                      <div className="card-drawer">
+                        <h4 className="drawer-heading">Top-5 Format Probability Distribution</h4>
+                        <div className="prob-matrix">
+                          {item.top_k.map((pred) => (
+                            <div key={pred.class_name} className="prob-row">
+                              <span className="prob-lbl mono">{pred.class_name.toUpperCase()}</span>
+                              <div className="prob-track">
+                                <div
+                                  className="prob-bar"
+                                  style={{ width: `${Math.max(4, pred.probability * 100)}%` }}
+                                />
+                              </div>
+                              <span className="prob-val mono">{(pred.probability * 100).toFixed(2)}%</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="hash-row">
+                          <span className="d-label">Reconstructed SHA-256:</span>
+                          <code className="d-hash mono">{item.sha256}</code>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+
+              {mlResults.length === 0 && (
+                <div className="empty-card">
+                  <h3>No Classified Fragments</h3>
+                  <p>Execute an evidence scan to run Byte2Image and deep fragment classification.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: BLOCKCHAIN AUDIT LEDGER */}
+        {tab === "ledger" && (
+          <div className="feed-view">
+            <div className="feed-header">
+              <div>
+                <h1 className="feed-title">Cryptographic Chain-of-Custody</h1>
+                <p className="feed-subtitle">
+                  Tamper-proof recovery events secured with Ed25519 digital signatures and SHA-256 block hashing.
+                </p>
+              </div>
+              <div className="header-actions">
                 <button
-                  className="btn-cyber btn-primary-cyber"
+                  className="card-btn primary"
                   onClick={handleVerify}
                   disabled={verifying || ledger.length === 0}
                 >
-                  {verifying ? "VERIFYING CRYPTO..." : "VALIDATE CHAIN INTEGRITY"}
+                  {verifying ? "Verifying..." : "Validate Entire Chain"}
                 </button>
               </div>
             </div>
 
             {verifyResult && (
-              <div className={`console-banner ${verifyResult.valid ? "console-success" : "console-error"}`}>
-                <span className="console-prompt">{verifyResult.valid ? "[PASS]" : "[FAIL]"}</span>
-                <span className="console-text">
+              <div className={`alert-box ${verifyResult.valid ? "alert-success" : "alert-error"}`}>
+                <span>
                   {verifyResult.valid
-                    ? "CRYPTOGRAPHIC CHAIN INTEGRITY VERIFIED: All Ed25519 digital signatures and SHA-256 hash preimages are valid and untampered."
-                    : `CHAIN INTEGRITY FAILURE: ${verifyResult.reason || "Hash continuity mismatch detected."}`}
+                    ? "Cryptographic Chain Verified: All Ed25519 signatures and block hash preimages are valid."
+                    : `Chain verification error: ${verifyResult.reason || "Hash mismatch"}`}
                 </span>
-                <button className="console-dismiss" onClick={() => setVerifyResult(null)}>DISMISS</button>
+                <button className="alert-close" onClick={() => setVerifyResult(null)}>Dismiss</button>
               </div>
             )}
 
-            <div className="ledger-stream">
+            <div className="cards-feed">
               {ledger.map((b, idx) => (
-                <div key={b.block_hash || idx} className="ledger-block">
-                  <div className="b-header">
-                    <div className="b-idx-group">
-                      <span className="b-idx mono-text">BLOCK #{b.block_index}</span>
-                      <span className="b-action">{b.payload?.action || b.block_type || "RECOVERY_EVENT"}</span>
-                    </div>
-                    <span className="b-timestamp mono-text">{b.timestamp}</span>
+                <article key={b.block_hash || idx} className="feed-card">
+                  <div className="card-topline">
+                    <h2 className="card-heading">
+                      Block #{b.block_index} — {b.payload?.action || b.block_type || "RECOVERY_EVENT"}
+                    </h2>
+                    <span className="card-tag mono">BLOCK {b.block_index}</span>
                   </div>
 
-                  <div className="b-matrix">
-                    <div className="b-entry">
-                      <span className="b-tag">EVENT METHOD</span>
-                      <span className="b-val">{b.payload?.recovery_method || "extent_carving"}</span>
+                  <p className="card-summary">
+                    Action: <strong>{b.payload?.recovery_method || "extent_carving"}</strong> on artifact{" "}
+                    <strong>{b.payload?.file_id || b.payload?.filename || "GENESIS"}</strong>. Recorded at{" "}
+                    <span className="mono">{b.timestamp}</span>.
+                  </p>
+
+                  <div className="card-footer">
+                    <div className="meta-left">
+                      <span className="meta-item">
+                        <span className="meta-lbl">Block Hash:</span>{" "}
+                        <code className="mono">{b.block_hash.slice(0, 16)}...</code>
+                      </span>
+                      <span className="meta-sep">•</span>
+                      <span className="meta-item">
+                        <span className="meta-lbl">Prev:</span>{" "}
+                        <code className="mono">{(b.prev_hash || "00000000").slice(0, 10)}...</code>
+                      </span>
                     </div>
-                    <div className="b-entry">
-                      <span className="b-tag">TARGET ARTIFACT</span>
-                      <span className="b-val mono-text">{b.payload?.file_id || b.payload?.filename || "GENESIS"}</span>
-                    </div>
-                    <div className="b-entry">
-                      <span className="b-tag">PREVIOUS HASH</span>
-                      <span className="b-val mono-text hash-text">{b.prev_hash || "0000000000000000000000000000000000000000000000000000000000000000"}</span>
-                    </div>
-                    <div className="b-entry">
-                      <span className="b-tag">BLOCK HASH</span>
-                      <span className="b-val mono-text hash-text highlight-hash">{b.block_hash}</span>
-                    </div>
-                    <div className="b-entry">
-                      <span className="b-tag">SIGNER PUBLIC KEY</span>
-                      <span className="b-val mono-text hash-text">{b.public_key_id}</span>
+
+                    <div className="meta-right">
+                      <span className="meta-item mono signer-tag">
+                        Signer: {b.public_key_id ? b.public_key_id.slice(0, 12) : "DefaultKey"}...
+                      </span>
                     </div>
                   </div>
-                </div>
+                </article>
               ))}
+
               {ledger.length === 0 && (
-                <div className="empty-box">NO LEDGER BLOCKS GENERATED. EXECUTE A SCAN TO INITIATE CHAIN-OF-CUSTODY.</div>
+                <div className="empty-card">
+                  <h3>No Ledger Blocks</h3>
+                  <p>Run a recovery scan to start the immutable chain of custody.</p>
+                </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 4: SETUP */}
-        {tab === "setup" && (
-          <div className="view-panel">
-            <div className="panel-header">
-              <div className="title-block">
-                <span className="sub-tag">SYSTEM PARAMETERS</span>
-                <h1 className="panel-title">Forensic Session Configuration</h1>
+        {/* TAB 4: NEW SCAN CONFIGURATION */}
+        {tab === "scan" && (
+          <div className="feed-view">
+            <div className="feed-header">
+              <div>
+                <h1 className="feed-title">New Forensic Acquisition</h1>
+                <p className="feed-subtitle">
+                  Configure evidence target parameters and launch recovery pipeline.
+                </p>
               </div>
             </div>
 
-            <div className="panel-box config-box">
-              <div className="box-titlebar">
-                <span className="box-heading">CASE INITIALIZATION PARAMETERS</span>
+            <div className="feed-card form-box">
+              <div className="form-group">
+                <label className="form-label">Case Identifier</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={caseId}
+                  onChange={(e) => setCaseId(e.target.value)}
+                  placeholder="CASE-2026-XFS-01"
+                />
               </div>
 
-              <div className="config-form">
-                <div className="input-group">
-                  <label className="input-label">CASE IDENTIFIER CODE</label>
+              <div className="form-group">
+                <label className="form-label">Lead Forensic Investigator</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={investigator}
+                  onChange={(e) => setInvestigator(e.target.value)}
+                  placeholder="Detective J. Doe"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Evidence Disk Image Path (.img, .raw, .dd)</label>
+                <div className="input-with-button">
                   <input
-                    className="cyber-input mono-text"
                     type="text"
-                    value={caseId}
-                    onChange={(e) => setCaseId(e.target.value)}
-                    placeholder="CASE-2026-XFS-01"
+                    className="form-input mono"
+                    value={imagePath}
+                    onChange={(e) => setImagePath(e.target.value)}
+                    placeholder="tests/fixtures/xfs_deleted_synthetic.img"
                   />
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">LEAD FORENSIC EXAMINER</label>
-                  <input
-                    className="cyber-input"
-                    type="text"
-                    value={investigator}
-                    onChange={(e) => setInvestigator(e.target.value)}
-                    placeholder="Forensic Examiner ID"
-                  />
-                </div>
-
-                <div className="input-group">
-                  <label className="input-label">EVIDENCE IMAGE TARGET PATH</label>
-                  <div className="input-row">
-                    <input
-                      className="cyber-input mono-text"
-                      type="text"
-                      value={imagePath}
-                      onChange={(e) => setImagePath(e.target.value)}
-                      placeholder="tests/fixtures/xfs_deleted_synthetic.img"
-                    />
-                    <button className="btn-cyber btn-secondary-cyber" onClick={handlePickImage}>
-                      BROWSE...
-                    </button>
-                  </div>
-                  <div className="preset-bar">
-                    <span className="preset-title">FIXTURE PRESETS:</span>
-                    <button
-                      className="preset-tag"
-                      onClick={() => setImagePath("tests/fixtures/xfs_deleted_synthetic.img")}
-                    >
-                      SYNTHETIC XFS IMAGE (2MB)
-                    </button>
-                    <button
-                      className="preset-tag"
-                      onClick={() => setImagePath("tests/fixtures/btrfs_deleted_synthetic.img")}
-                    >
-                      SYNTHETIC BTRFS IMAGE (2MB)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="form-actions">
-                  <button
-                    className="btn-cyber btn-primary-cyber"
-                    disabled={scanning || !imagePath}
-                    onClick={() => handleRunScan()}
-                  >
-                    {scanning ? "EXECUTING RECOVERY..." : "EXECUTE FORENSIC ACQUISITION"}
-                  </button>
-                  <button
-                    className="btn-cyber btn-secondary-cyber"
-                    disabled={exporting || files.length === 0}
-                    onClick={handleExportReport}
-                  >
-                    {exporting ? "GENERATING..." : "EXPORT AUDIT REPORT"}
+                  <button className="card-btn secondary" onClick={handlePickImage}>
+                    Browse...
                   </button>
                 </div>
 
-                {reportPath && (
-                  <div className="console-banner console-success" style={{ marginTop: "1.5rem" }}>
-                    <span className="console-prompt">[REPORT]</span>
-                    <span className="console-text">Forensic report exported to: {reportPath}</span>
-                  </div>
-                )}
+                <div className="preset-links">
+                  <span className="preset-label">Presets:</span>
+                  <button
+                    className="preset-btn"
+                    onClick={() => setImagePath("tests/fixtures/xfs_deleted_synthetic.img")}
+                  >
+                    Synthetic XFS (2MB)
+                  </button>
+                  <button
+                    className="preset-btn"
+                    onClick={() => setImagePath("tests/fixtures/btrfs_deleted_synthetic.img")}
+                  >
+                    Synthetic Btrfs (2MB)
+                  </button>
+                </div>
               </div>
+
+              <div className="form-actions-row">
+                <button
+                  className="card-btn primary"
+                  disabled={scanning || !imagePath}
+                  onClick={() => handleRunScan()}
+                >
+                  {scanning ? "Executing Scan..." : "Launch Forensic Recovery"}
+                </button>
+                <button
+                  className="card-btn secondary"
+                  disabled={exporting || files.length === 0}
+                  onClick={handleExportReport}
+                >
+                  {exporting ? "Generating..." : "Export Forensic Report"}
+                </button>
+              </div>
+
+              {reportPath && (
+                <div className="alert-box alert-success" style={{ marginTop: "1rem" }}>
+                  <span>Report exported successfully: <strong>{reportPath}</strong></span>
+                </div>
+              )}
             </div>
           </div>
         )}
