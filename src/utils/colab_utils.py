@@ -54,3 +54,19 @@ def setup_google_drive(mount_point: str = "/content/drive") -> str:
     except ImportError:
         print("Not running in an active Google Colab kernel. Local storage will be used.")
         return "./checkpoints"
+
+
+def setup_backup_directory(use_google_drive: bool = False) -> str:
+    """
+    Setup local or Google Drive backup directory.
+    """
+    if use_google_drive:
+        try:
+            return setup_google_drive()
+        except Exception as e:
+            print(f"Google Drive mount failed: {e}")
+    local_backup_path = os.path.join(os.getcwd(), "local_backups")
+    os.makedirs(local_backup_path, exist_ok=True)
+    print(f"Using local backup directory: {local_backup_path}")
+    return local_backup_path
+

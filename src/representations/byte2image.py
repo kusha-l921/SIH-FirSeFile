@@ -12,36 +12,60 @@ from PIL import Image
 import os
 
 
-def extract_intrabyte_bitshifts(raw_bytes: bytes) -> np.ndarray:
-    """
-    Expose intra-byte bit-level patterns via a sliding byte window with 1-bit stride.
-    For a sequence of N bytes (8*N bits), this extracts 8 shifted sequences (shift 0..7).
+DEFAULT_FRAGMENT_SIZE = 512
+DEFAULT_NGRAM = 16
 
-    Args:
-        raw_bytes: Binary data (e.g., 512 bytes).
 
-    Returns:
-        np.ndarray of shape (8, len(raw_bytes)) with uint8 values in [0, 255].
+def sliding_byte_window(raw_bytes: Union[bytes, bytearray, np.ndarray]) -> np.ndarray:
     """
-    byte_arr = np.frombuffer(raw_bytes, dtype=np.uint8)
-    n_bytes = len(byte_arr)
+    Generate the (512, 8) shifted-byte matrix via a 1-bit sliding window.
+    """
+    raw = np.frombuffer(bytes(raw_bytes), dtype=np.uint8)
+    n_bytes = len(raw)
     if n_bytes == 0:
-        return np.zeros((8, 1), dtype=np.uint8)
+        return np.zeros((DEFAULT_FRAGMENT_SIZE, 8), dtype=np.uint8)
+    
+    # Pad or truncate to DEFAULT_FRAGMENT_SIZE
+    if n_bytes < DEFAULT_FRAGMENT_SIZE:
+        raw = np.pad(raw, (0, DEFAULT_FRAGMENT_SIZE - n_bytes), mode="constant")
+    elif n_bytes > DEFAULT_FRAGMENT_SIZE:
+        raw = raw[:DEFAULT_FRAGMENT_SIZE]
 
-    shifted_matrix = np.zeros((8, n_bytes), dtype=np.uint8)
-    # Shift 0 is the original byte sequence
-    shifted_matrix[0] = byte_arr
+    bits = np.unpackbits(raw)
+    bits = np.pad(bits, (0, 7), mode="constant")
 
-    # Shifts 1 through 7: slide window bit-by-bit
-    for k in range(1, 8):
-        # High bits from current byte, low bits from next byte
-        curr_shifted = ((byte_arr[:-1].astype(np.uint16) << k) & 0xFF).astype(np.uint8)
-        next_shifted = (byte_arr[1:].astype(np.uint16) >> (8 - k)).astype(np.uint8)
-        shifted_matrix[k, :-1] = curr_shifted | next_shifted
-        # For the final byte, wrap or zero-pad
-        shifted_matrix[k, -1] = ((int(byte_arr[-1]) << k) & 0xFF)
+    shifted_sequences = []
+    for shift in range(8):
+        shifted_bits = bits[shift:shift + DEFAULT_FRAGMENT_SIZE * 8]
+        shifted_bytes = np.packbits(
+            shifted_bits.reshape(DEFAULT_FRAGMENT_SIZE, 8),
+            axis=1
+        ).reshape(DEFAULT_FRAGMENT_SIZE)
+        shifted_sequences.append(shifted_bytes)
 
-    return shifted_matrix
+    return np.stack(shifted_sequences, axis=1)  # Shape (512, 8)
+
+
+def extract_intrabyte_bitshifts(raw_bytes: bytes) -> np.ndarray:
+    """Compatibility alias returning (8, 512)."""
+    return sliding_byte_window(raw_bytes).T
+
+
+def byte2image_native(raw_bytes: Union[bytes, bytearray, np.ndarray], ngram: int = DEFAULT_NGRAM) -> np.ndarray:
+    """
+    Construct the native published Byte2Image grayscale representation.
+    For Ns=512 and n=16 -> (497, 128) uint8.
+    """
+    shifted = sliding_byte_window(raw_bytes)  # (512, 8)
+    height = DEFAULT_FRAGMENT_SIZE - ngram + 1
+    width = 8 * ngram
+
+    image = np.empty((height, width), dtype=np.uint8)
+    for row in range(height):
+        block = shifted[row:row + ngram]
+        image[row] = block.reshape(-1)
+
+    return image
 
 
 def compute_byte_transition_matrix(raw_bytes: bytes, grid_size: int = 16) -> np.ndarray:
@@ -53,13 +77,11 @@ def compute_byte_transition_matrix(raw_bytes: bytes, grid_size: int = 16) -> np.
     if len(byte_arr) < 2:
         return np.zeros((grid_size, grid_size), dtype=np.float32)
 
-    # Quantize byte transitions into a grid_size x grid_size matrix
     high_nibble = byte_arr >> 4
     low_nibble = byte_arr & 0x0F
     matrix = np.zeros((16, 16), dtype=np.float32)
     np.add.at(matrix, (high_nibble, low_nibble), 1.0)
     
-    # Normalize
     max_val = matrix.max()
     if max_val > 0:
         matrix = matrix / max_val
@@ -67,57 +89,32 @@ def compute_byte_transition_matrix(raw_bytes: bytes, grid_size: int = 16) -> np.
 
 
 def bytes_to_byte2image(
-    raw_bytes: bytes,
-    target_size: Tuple[int, int] = (256, 256),
+    raw_bytes: Union[bytes, bytearray, np.ndarray],
+    target_size: Optional[Tuple[int, int]] = (256, 256),
+    ngram: int = DEFAULT_NGRAM,
     normalize: bool = True
 ) -> np.ndarray:
     """
-    Convert a raw binary file fragment into a deterministic 2D grayscale image representation.
-    Combines intra-byte bit-shifting (8 rows of bit-shifted bytes) with row-wise n-gram stacking
-    and deterministic spatial expansion to match the target Swin Transformer input dimensions.
-
-    Args:
-        raw_bytes: Raw binary fragment (typically 512 bytes).
-        target_size: (Height, Width) for the output 2D image (default (256, 256)).
-        normalize: If True, scale pixel values to [0.0, 1.0] float32; else [0, 255] uint8.
-
-    Returns:
-        2D numpy array of shape (target_size[0], target_size[1]).
+    Native Byte2Image -> optional 256x256 model-input adaptation.
     """
-    if len(raw_bytes) == 0:
-        out = np.zeros(target_size, dtype=np.float32 if normalize else np.uint8)
-        return out
+    native = byte2image_native(raw_bytes, ngram=ngram)
 
-    # 1. Extract 8-channel intra-byte bit-shifted representation (8 x N)
-    bitshifts = extract_intrabyte_bitshifts(raw_bytes)  # (8, N)
-    n_shifts, n_bytes = bitshifts.shape
+    if target_size is None:
+        return native
 
-    # 2. Build 2D Intra-Byte and N-Gram Representation Matrix
-    # We construct a base 2D representation:
-    # Top section: 8 rows of bit-shifted bytes repeated/expanded to expose intrabyte textures
-    # Bottom section: 2D byte value matrix reshaped from raw bytes & difference signals
-    byte_arr = bitshifts[0]  # original bytes
-    diff_signal = np.abs(np.diff(byte_arr.astype(np.int16), prepend=byte_arr[0])).astype(np.uint8)
+    image = Image.fromarray(native, mode="L")
+    image = image.resize(
+        (target_size[1], target_size[0]),
+        resample=Image.Resampling.BICUBIC
+    )
 
-    # Stack bitshifts (8 rows) and difference row (1 row) -> (9, n_bytes)
-    stacked_repr = np.vstack([bitshifts, diff_signal.reshape(1, -1)])  # Shape (9, 512)
-
-    # Convert to PIL Image for high-quality deterministic bicubic/bilinear resizing
-    base_img = Image.fromarray(stacked_repr)
-    resized_img = base_img.resize((target_size[1], target_size[0]), resample=Image.Resampling.BILINEAR)
-    img_array = np.array(resized_img, dtype=np.float32)
+    image_array = np.asarray(image, dtype=np.float32)
 
     if normalize:
-        img_array = img_array / 255.0
-    else:
-        img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+        image_array /= 255.0
 
-    return img_array
+    return image_array
 
-
-def byte2image_native(raw_bytes: bytes, **kwargs) -> np.ndarray:
-    """Native Byte2Image representation alias for compatibility."""
-    return bytes_to_byte2image(raw_bytes, **kwargs)
 
 
 class Byte2ImageTransform:
