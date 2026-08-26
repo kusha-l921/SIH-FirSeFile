@@ -63,7 +63,21 @@ def check_and_generate_fixtures():
 
 
 def run_gui():
-    """Launch the Vite React GUI development server and open browser."""
+    """Launch the Python API server and Vite React GUI development server and open browser."""
+    import threading
+
+    # Start API server in background thread/process
+    def start_api():
+        try:
+            from tools.api_server import start_server
+            start_server(8765)
+        except Exception as e:
+            print(f"[!] API Server notice: {e}")
+
+    api_thread = threading.Thread(target=start_api, daemon=True)
+    api_thread.start()
+    time.sleep(0.5)
+
     gui_dir = PROJECT_ROOT / "Gui_CLI"
     if not (gui_dir / "node_modules").exists():
         print("[*] Installing GUI frontend dependencies (npm install)...")
@@ -71,6 +85,7 @@ def run_gui():
         subprocess.run([npm_cmd, "install"], cwd=gui_dir, check=True)
 
     print("\n[*] Starting FirSeFile GUI Workbench on http://127.0.0.1:1420 ...")
+    print("[*] Backend Forensic REST API live on http://127.0.0.1:8765 ...")
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     
     # Open browser after short delay
@@ -78,13 +93,13 @@ def run_gui():
         time.sleep(1.5)
         webbrowser.open("http://127.0.0.1:1420")
 
-    import threading
     threading.Thread(target=open_browser, daemon=True).start()
 
     try:
         subprocess.run([npm_cmd, "run", "dev", "--", "--host", "127.0.0.1", "--port", "1420"], cwd=gui_dir)
     except KeyboardInterrupt:
         print("\n[*] GUI Server stopped.")
+
 
 
 def run_scan(image_path: str, output_dir: str = "recovered_files", ledger_chain: str = "chain.jsonl"):
