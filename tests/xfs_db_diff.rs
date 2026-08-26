@@ -739,3 +739,58 @@ fn differential_extent_extraction_against_xfs_db_fixture() {
         }
     }
 }
+
+#[test]
+#[ignore]
+fn differential_recovery_candidates_against_fixture() {
+    use xfs_recovery_engine::{
+        CandidateClass, RecoveryMethod, WalkMode, collect_recovery_candidates,
+    };
+
+    let Some(image) = std::env::var_os("XRE_TEST_IMAGE") else {
+        eprintln!("skipped: set XRE_TEST_IMAGE=<raw xfs image path>");
+        return;
+    };
+    if !xfs_db_available() {
+        eprintln!("skipped: xfs_db not installed");
+        return;
+    }
+
+    let mut file = FileImage::open(&image).expect("open image");
+    let (sb, geo) = Superblock::parse(&mut file, 0).expect("parse sb");
+
+    let report = collect_recovery_candidates(&mut file, 0, &sb, &geo, WalkMode::Strict)
+        .expect("collect recovery candidates");
+
+    assert!(report.summary.total_inodes_scanned > 0);
+    assert_eq!(
+        report.candidates.len(),
+        report.summary.total_candidates,
+        "summary total_candidates mismatch"
+    );
+    assert_eq!(
+        report.rejections.len(),
+        report.summary.total_rejections,
+        "summary total_rejections mismatch"
+    );
+
+    for c in &report.candidates {
+        assert!(c.ino > 0);
+        match c.candidate_class {
+            CandidateClass::UnlinkedChainResidue => {
+                assert_eq!(c.method, RecoveryMethod::XfsUnlinkedChain);
+                assert!(!c.is_experimental);
+            }
+            CandidateClass::FreedWithResidualExtents => {
+                assert_eq!(c.method, RecoveryMethod::XfsResidualExtents);
+                assert!(c.is_experimental);
+                assert!(c.original_size.is_none());
+            }
+            CandidateClass::ZeroLinkAnomaly => {
+                assert_eq!(c.method, RecoveryMethod::XfsZeroLinkAnomaly);
+                assert!(!c.is_experimental);
+                assert_eq!(c.nlink, 0);
+            }
+        }
+    }
+}
