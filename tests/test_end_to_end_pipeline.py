@@ -159,7 +159,7 @@ def test_level3_xfs_end_to_end_recovery():
 
     try:
         manifest = build_xfs_synthetic_image(img_path)
-        assert img_path.stat().st_size == 2097152
+        assert img_path.stat().st_size == manifest["total_size"]
 
         results = run_forensic_pipeline(
             str(img_path),

@@ -191,7 +191,7 @@ fn evidence_source_is_never_modified() {
     assert_eq!(sb, original, "evidence bytes must not change after RecoveryEngine::open");
 
     // Static check: XFS io.rs production code must have no write paths
-    let xfs_io_src = include_str!("../../src/recovery/xfs/src/io.rs");
+    let xfs_io_src = include_str!("../../correct-recovery-engine/src/io.rs");
     let production = xfs_io_src.split("#[cfg(test)]").next().unwrap_or(xfs_io_src);
     for token in ["write(", "write_all", "io::Write", "truncate(", "set_len", "append("] {
         assert!(

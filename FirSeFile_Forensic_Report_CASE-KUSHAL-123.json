@@ -1,0 +1,346 @@
+{
+  "report_title": "FirSeFile Forensic Recovery Report",
+  "generated_at_utc": "2026-08-26T23:00:47.576086+00:00",
+  "generated_at_ist": "2026-08-27 04:30:47 IST",
+  "case_info": {
+    "case_id": "CASE-KUSHAL-123",
+    "investigator": "Forensic Analyst",
+    "scan_id": "7deaf3fa0e83",
+    "scan_start_time_utc": "2026-08-26T23:00:39.158457+00:00",
+    "scan_start_time_ist": "2026-08-27 04:30:39 IST",
+    "scan_end_time_utc": "2026-08-26T23:00:40.954356+00:00",
+    "scan_end_time_ist": "2026-08-27 04:30:40 IST"
+  },
+  "evidence_image": {
+    "path": "/home/kushal/Desktop/SIH-FirSeFile/gui_kushal_123_test.img",
+    "sha256": "146d759cd077f6dcdcba39a94517acc22dd6de937b7d0cf4543bbf21b43d1966",
+    "detected_filesystem": "XFS"
+  },
+  "recovery_summary": {
+    "total_files_recovered": 3
+  },
+  "recovered_artifacts": [
+    {
+      "file_id": "xfs:ino128",
+      "filename": "xfs_deleted_ino_128.txt",
+      "file_type": "txt",
+      "file_size": 8,
+      "size": 8,
+      "original_size": 8,
+      "observed_extent_bytes": 4096,
+      "content_hash_exact": true,
+      "metadata": {
+        "filename": "xfs_deleted_ino_128.txt",
+        "file_size": 8,
+        "size": 8,
+        "original_size": 8,
+        "observed_extent_bytes": 4096,
+        "created": null,
+        "modified": "2026-08-26T22:51:20+00:00",
+        "accessed": "2026-08-26T22:50:20+00:00",
+        "changed": "2026-08-26T22:51:20+00:00",
+        "deleted_if_available": true,
+        "permissions": "0o644",
+        "ownership": {
+          "uid": 1000,
+          "gid": 1000
+        },
+        "filesystem": "xfs",
+        "source_locations": [
+          32768
+        ],
+        "additional_attributes": {
+          "ino": 128,
+          "ag_number": 0,
+          "ag_block": 8,
+          "slot": 0,
+          "generation": 0,
+          "nlink": 0,
+          "candidate_class": "ZeroLinkAnomaly",
+          "recovery_method": "xfs_zero_link_anomaly",
+          "is_experimental": false,
+          "content_hash_exact": true,
+          "content_sha256": "8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b",
+          "evidence": [
+            "valid_dinode_core",
+            "valid_timestamps",
+            "zero_link_on_allocated"
+          ],
+          "issues": [],
+          "extents": [
+            {
+              "logical_start": 0,
+              "physical_start": 64,
+              "block_count": 1,
+              "state": "normal"
+            }
+          ],
+          "validation_status": "VALID_SCRIPT_TEXT"
+        }
+      },
+      "source_locations": [
+        32768
+      ],
+      "recovery_method": "xfs_zero_link_anomaly",
+      "confidence": 0.75,
+      "confidence_class": "medium",
+      "sha256": "8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b",
+      "validation": {
+        "detected_format": "txt",
+        "is_valid": true,
+        "status": "VALID_SCRIPT_TEXT",
+        "reconstructed_size_bytes": 8,
+        "sha256": "8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b",
+        "details": {
+          "has_shebang": false,
+          "shebang": null,
+          "line_count": 1
+        },
+        "provenance": {}
+      },
+      "is_experimental": false
+    },
+    {
+      "file_id": "xfs:ino129",
+      "filename": "xfs_deleted_ino_129.txt",
+      "file_type": "txt",
+      "file_size": 8,
+      "size": 8,
+      "original_size": 8,
+      "observed_extent_bytes": 4096,
+      "content_hash_exact": true,
+      "metadata": {
+        "filename": "xfs_deleted_ino_129.txt",
+        "file_size": 8,
+        "size": 8,
+        "original_size": 8,
+        "observed_extent_bytes": 4096,
+        "created": null,
+        "modified": "2026-08-26T22:51:30+00:00",
+        "accessed": "2026-08-26T22:50:30+00:00",
+        "changed": "2026-08-26T22:51:30+00:00",
+        "deleted_if_available": true,
+        "permissions": "0o644",
+        "ownership": {
+          "uid": 1000,
+          "gid": 1000
+        },
+        "filesystem": "xfs",
+        "source_locations": [
+          33024
+        ],
+        "additional_attributes": {
+          "ino": 129,
+          "ag_number": 0,
+          "ag_block": 8,
+          "slot": 1,
+          "generation": 0,
+          "nlink": 0,
+          "candidate_class": "ZeroLinkAnomaly",
+          "recovery_method": "xfs_zero_link_anomaly",
+          "is_experimental": false,
+          "content_hash_exact": true,
+          "content_sha256": "6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913",
+          "evidence": [
+            "valid_dinode_core",
+            "valid_timestamps",
+            "zero_link_on_allocated"
+          ],
+          "issues": [],
+          "extents": [
+            {
+              "logical_start": 0,
+              "physical_start": 65,
+              "block_count": 1,
+              "state": "normal"
+            }
+          ],
+          "validation_status": "VALID_SCRIPT_TEXT"
+        }
+      },
+      "source_locations": [
+        33024
+      ],
+      "recovery_method": "xfs_zero_link_anomaly",
+      "confidence": 0.75,
+      "confidence_class": "medium",
+      "sha256": "6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913",
+      "validation": {
+        "detected_format": "txt",
+        "is_valid": true,
+        "status": "VALID_SCRIPT_TEXT",
+        "reconstructed_size_bytes": 8,
+        "sha256": "6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913",
+        "details": {
+          "has_shebang": false,
+          "shebang": null,
+          "line_count": 1
+        },
+        "provenance": {}
+      },
+      "is_experimental": false
+    },
+    {
+      "file_id": "xfs:ino130",
+      "filename": "xfs_deleted_ino_130.txt",
+      "file_type": "txt",
+      "file_size": 8,
+      "size": 8,
+      "original_size": 8,
+      "observed_extent_bytes": 4096,
+      "content_hash_exact": true,
+      "metadata": {
+        "filename": "xfs_deleted_ino_130.txt",
+        "file_size": 8,
+        "size": 8,
+        "original_size": 8,
+        "observed_extent_bytes": 4096,
+        "created": null,
+        "modified": "2026-08-26T22:51:40+00:00",
+        "accessed": "2026-08-26T22:50:40+00:00",
+        "changed": "2026-08-26T22:51:40+00:00",
+        "deleted_if_available": true,
+        "permissions": "0o644",
+        "ownership": {
+          "uid": 1000,
+          "gid": 1000
+        },
+        "filesystem": "xfs",
+        "source_locations": [
+          33280
+        ],
+        "additional_attributes": {
+          "ino": 130,
+          "ag_number": 0,
+          "ag_block": 8,
+          "slot": 2,
+          "generation": 0,
+          "nlink": 0,
+          "candidate_class": "ZeroLinkAnomaly",
+          "recovery_method": "xfs_zero_link_anomaly",
+          "is_experimental": false,
+          "content_hash_exact": true,
+          "content_sha256": "d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f",
+          "evidence": [
+            "valid_dinode_core",
+            "valid_timestamps",
+            "zero_link_on_allocated"
+          ],
+          "issues": [],
+          "extents": [
+            {
+              "logical_start": 0,
+              "physical_start": 66,
+              "block_count": 1,
+              "state": "normal"
+            }
+          ],
+          "validation_status": "VALID_SCRIPT_TEXT"
+        }
+      },
+      "source_locations": [
+        33280
+      ],
+      "recovery_method": "xfs_zero_link_anomaly",
+      "confidence": 0.75,
+      "confidence_class": "medium",
+      "sha256": "d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f",
+      "validation": {
+        "detected_format": "txt",
+        "is_valid": true,
+        "status": "VALID_SCRIPT_TEXT",
+        "reconstructed_size_bytes": 8,
+        "sha256": "d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f",
+        "details": {
+          "has_shebang": false,
+          "shebang": null,
+          "line_count": 1
+        },
+        "provenance": {}
+      },
+      "is_experimental": false
+    }
+  ],
+  "blockchain_ledger": [
+    {
+      "block_type": "genesis",
+      "block_index": 0,
+      "timestamp": "2026-08-26T23:00:39.625643+00:00",
+      "file_id": "",
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "payload": {
+        "disk_baseline_sha256": "146d759cd077f6dcdcba39a94517acc22dd6de937b7d0cf4543bbf21b43d1966",
+        "operator_public_key": "992a49f9f9a1646c646cbd369511d52a00100b255e355d7deab6974ffc49dafb"
+      },
+      "block_hash": "06aa6117d88d473b58585e5e912d6919a95871c71f48c861ba9e90e0c056047f",
+      "signature": "d1a7a5aef83c5b79293662f3fdc0f1bc6ec2571767f49f8109a8032db6b175e0ce07e2b1d7c4baf1cc1020770239ac73b7ab3fef8c350a9a522de26fde7b460d",
+      "public_key_id": "992a49f9f9a1646c646cbd369511d52a00100b255e355d7deab6974ffc49dafb"
+    },
+    {
+      "block_type": "full_recovery",
+      "block_index": 1,
+      "timestamp": "2026-08-26T23:00:39.631818+00:00",
+      "file_id": "xfs:ino128",
+      "prev_hash": "06aa6117d88d473b58585e5e912d6919a95871c71f48c861ba9e90e0c056047f",
+      "payload": {
+        "filename": "xfs_deleted_ino_128.txt",
+        "macb_timestamps": {
+          "modified": "2026-08-26T22:51:20+00:00",
+          "accessed": "2026-08-26T22:50:20+00:00",
+          "created": null
+        },
+        "recovered_file_sha256": "8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b",
+        "size": 8,
+        "source_location": "32768",
+        "recovery_method": "xfs_zero_link_anomaly"
+      },
+      "block_hash": "9fbeb4cf8ee511b4c19bfff4f1f9cf25809d9c3e21e2f90fee8187fb49aeee85",
+      "signature": "e134679df01977ef23173c89e9dd56651f941a6a8db2ff9ec0c4d15120684f821ba2f9b24992d2fa1ff55bbded1a92897dd7aebf8fc2fee3a501aa0624584f04",
+      "public_key_id": "992a49f9f9a1646c646cbd369511d52a00100b255e355d7deab6974ffc49dafb"
+    },
+    {
+      "block_type": "full_recovery",
+      "block_index": 2,
+      "timestamp": "2026-08-26T23:00:39.632113+00:00",
+      "file_id": "xfs:ino129",
+      "prev_hash": "9fbeb4cf8ee511b4c19bfff4f1f9cf25809d9c3e21e2f90fee8187fb49aeee85",
+      "payload": {
+        "filename": "xfs_deleted_ino_129.txt",
+        "macb_timestamps": {
+          "modified": "2026-08-26T22:51:30+00:00",
+          "accessed": "2026-08-26T22:50:30+00:00",
+          "created": null
+        },
+        "recovered_file_sha256": "6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913",
+        "size": 8,
+        "source_location": "33024",
+        "recovery_method": "xfs_zero_link_anomaly"
+      },
+      "block_hash": "f0e7b2f35b879862d486ef47493cc33dac9c2e55d2115039834b42bed97f9ff3",
+      "signature": "d2607baaad16365391ae2aeae818417525a8e72f2fb5f843081f86c21402f5c86d13261d71bbb30dc3dfdc1854306ac7cdc24d06758b6466494561e9251be303",
+      "public_key_id": "992a49f9f9a1646c646cbd369511d52a00100b255e355d7deab6974ffc49dafb"
+    },
+    {
+      "block_type": "full_recovery",
+      "block_index": 3,
+      "timestamp": "2026-08-26T23:00:39.632345+00:00",
+      "file_id": "xfs:ino130",
+      "prev_hash": "f0e7b2f35b879862d486ef47493cc33dac9c2e55d2115039834b42bed97f9ff3",
+      "payload": {
+        "filename": "xfs_deleted_ino_130.txt",
+        "macb_timestamps": {
+          "modified": "2026-08-26T22:51:40+00:00",
+          "accessed": "2026-08-26T22:50:40+00:00",
+          "created": null
+        },
+        "recovered_file_sha256": "d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f",
+        "size": 8,
+        "source_location": "33280",
+        "recovery_method": "xfs_zero_link_anomaly"
+      },
+      "block_hash": "9e83cc551dae9ff7383d12cc16a11de5ba63826e76693cd9873b7e5e34330dc2",
+      "signature": "8ae977355a9f26fb39e57c98dc4d5f0975cc655196a9874b631682e8f3e23adf62ebe19674e06a2e2618a206d1014c2cdf49521f0f14429cd0c3c15feab9e107",
+      "public_key_id": "992a49f9f9a1646c646cbd369511d52a00100b255e355d7deab6974ffc49dafb"
+    }
+  ]
+}

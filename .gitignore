@@ -1,31 +1,96 @@
+# ==============================================================================
+# Evidence / Forensic Data
+# ==============================================================================
+# Ignore all raw evidence disk images
+*.img
+*.dd
+*.raw
+*.E01
+*.001
+
+# ==============================================================================
+# Generated Outputs & Recovered Artifacts
+# ==============================================================================
+recovered_files/
+recovered_output/
+recovered_xfs_output/
+recovered_btrfs_output/
+my_recovered_files/
+
+# Generated reports & report visualization pages
+pdf_page*.png
+
+# Block target report files, keeping documentation PDFs trackable
+FirSeFile_Forensic_Report_*.pdf
+FirSeFile_Forensic_Report_*.html
+FirSeFile_Forensic_Report_*.json
+
+# ==============================================================================
+# Generated Blockchain Chain Ledgers
+# ==============================================================================
+# Generated ledgers from runs
+chain.jsonl
+*_chain.jsonl
+manual_test_chain.jsonl
+presentation_chain.jsonl
+manual_chain.jsonl
+
+# ==============================================================================
+# Generated Ground-Truth / Test Manifests
+# ==============================================================================
+*_ground_truth.txt
+*_ground_truth.json
+image-hash.txt
+gui_ground_truth.txt
+kushal_123_ground_truth.txt
+
+# ==============================================================================
+# Build Artifacts
+# ==============================================================================
+# Rust target directories
+target/
+target_tmp/
+Gui_CLI/src-tauri/target/
+blockchain_ledger/target/
+
+# Tauri generated bundles
+Gui_CLI/src-tauri/gen/
+
+# Frontend dependencies and builds
+node_modules/
+Gui_CLI/node_modules/
+Gui_CLI/dist/
+dist/
+build/
+
+# ==============================================================================
+# Python Cache & Environment
+# ==============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 .coverage
-*.pt
-*.pth
-!experiments/.gitkeep
-experiments/phase*
-experiments/checkpoints/
-local_backups/
 .ipynb_checkpoints/
+venv/
+.venv/
+env/
+.env/
 
-# Rust targets
-target/
-target_tmp/
-Gui_CLI/src-tauri/target
-blockchain_ledger/target/
-Gui_CLI/node_modules
-Gui_CLI/dist
-Gui_CLI/src-tauri/gen
+# ==============================================================================
+# Local Environment & Secrets
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
-# Test images & outputs
-tests/fixtures/*.img
-tests/fixtures/*.dd
-tests/fixtures/*.raw
-recovered_files/
-recovered_xfs_output/
-recovered_btrfs_output/
-*.jsonl
-
+# ==============================================================================
+# IDE / Editor Files
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

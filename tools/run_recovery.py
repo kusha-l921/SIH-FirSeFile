@@ -29,12 +29,15 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
+import warnings
+
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.validation.validator import validate_reconstructed_file
 from src.recovery.btrfs.btrfs_engine import BtrfsEngine, FILE_SIGNATURES
+from src.recovery.xfs.adapter import XfsRecoveryEngine, recover_xfs_image
 from src.models.zero_training_classifier import ZeroTrainingClassifier
 import blockchain_ledger
 from src.ml_pipeline import (
@@ -45,17 +48,22 @@ from src.ml_pipeline import (
 
 
 # ---------------------------------------------------------------------------
-# XFS Pure-Python Forensic Structural Parser
-# (Matches the Rust xfs-recovery-engine logic for cross-platform portability)
+# XFS Forensic Recovery Engine
+# Authoritative engine implemented in Rust under src/recovery/xfs/
 # ---------------------------------------------------------------------------
 
 class XfsForensicScanner:
     """
-    Read-only XFS filesystem parser for Python pipeline execution.
-    Reads superblock, AG headers, and dinode structures directly from image bytes.
+    .. deprecated:: 0.2.0
+       Legacy Python scanner replaced by authoritative Rust xfs-recovery-engine.
     """
 
     def __init__(self, image_path: Path):
+        warnings.warn(
+            "XfsForensicScanner is deprecated; use src.recovery.xfs.adapter.recover_xfs_image instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.image_path = image_path
 
     def scan(self) -> Dict[str, Any]:
@@ -245,9 +253,8 @@ def run_forensic_pipeline(
 
     # 4. Structural Recovery Phase
     if detected_fs == "xfs":
-        scanner = XfsForensicScanner(path)
-        scan_res = scanner.scan()
-        for f in scan_res.get("recovered_files", []):
+        xfs_res = recover_xfs_image(str(path), enable_experimental=True)
+        for f in xfs_res.get("recovered_files", []):
             recovered_files.append(f)
             ledger.record_recovery(
                 file_id=f["file_id"],
@@ -355,10 +362,17 @@ def run_forensic_pipeline(
                     "filename": f"{frag_id.replace(':', '_')}.{val_report.detected_format}",
                     "file_type": val_report.detected_format,
                     "file_size": len(carved_bytes),
+                    "size": len(carved_bytes),
+                    "original_size": None,
+                    "observed_extent_bytes": len(carved_bytes),
+                    "content_hash_exact": False,
                     "reconstructed_bytes": carved_bytes,
                     "metadata": {
                         "filename": f"{frag_id.replace(':', '_')}.{val_report.detected_format}",
                         "file_size": len(carved_bytes),
+                        "size": len(carved_bytes),
+                        "original_size": None,
+                        "observed_extent_bytes": len(carved_bytes),
                         "deleted_if_available": True,
                         "permissions": "-rw-r--r--",
                         "ownership": {"uid": 0, "gid": 0},

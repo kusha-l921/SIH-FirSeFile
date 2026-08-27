@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FirSeFile Forensic Recovery Report — CASE-KUSHAL-123</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
+        .container { max-width: 1200px; margin: 0 auto; background: #1e293b; border-radius: 12px; padding: 2.5rem; border: 1px solid #334155; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        h1 { font-size: 1.8rem; margin-top: 0; color: #38bdf8; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; padding-bottom: 1rem; }
+        .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; background: #0f172a; padding: 1.25rem; border-radius: 8px; border: 1px solid #334155; }
+        .meta-item { display: flex; flex-direction: column; gap: 0.25rem; }
+        .meta-label { font-size: 0.75rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+        .meta-value { font-size: 0.95rem; font-weight: 600; color: #f1f5f9; }
+        .mono { font-family: "JetBrains Mono", Consolas, Monaco, monospace; font-size: 0.85rem; }
+        h2 { font-size: 1.25rem; color: #38bdf8; margin-top: 2rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
+        th { background: #0f172a; text-align: left; padding: 0.75rem; color: #94a3b8; border-bottom: 2px solid #334155; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
+        td { padding: 0.75rem; border-bottom: 1px solid #334155; vertical-align: middle; }
+        tr:hover { background: rgba(56, 189, 248, 0.05); }
+        .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge.type { background: #0284c7; color: white; }
+        .badge.conf-rec { background: #475569; color: white; }
+        .badge.conf-ml { background: #10b981; color: white; }
+        .hash-cell { word-break: break-all; color: #cbd5e1; max-width: 180px; }
+        .footer { margin-top: 2.5rem; text-align: center; color: #64748b; font-size: 0.8rem; border-top: 1px solid #334155; padding-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <span>FirSeFile Forensic Recovery Report</span>
+            <span style="font-size: 0.9rem; font-weight: normal; color: #94a3b8;">Generated: 2026-08-27 06:12:45 IST</span>
+        </h1>
+
+            <div class="meta-item">
+                <span class="meta-label">Detected Filesystem</span>
+                <span class="meta-value">XFS</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Total Recovered Files</span>
+                <span class="meta-value">3 Artifacts</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Dominant Format</span>
+                <span class="meta-value">TXT</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Average ML Confidence</span>
+                <span class="meta-value">62.0%</span>
+            </div>
+            <div class="meta-item" style="grid-column: 1 / -1;">
+                <span class="meta-label">Evidence Image Path</span>
+                <span class="meta-value mono">/home/kushal/Desktop/SIH-FirSeFile/gui_kushal_123_test.img</span>
+            </div>
+            <div class="meta-item" style="grid-column: 1 / -1;">
+                <span class="meta-label">Evidence Image SHA-256 Digest</span>
+                <span class="meta-value mono">146d759cd077f6dcdcba39a94517acc22dd6de937b7d0cf4543bbf21b43d1966</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Scan Started (IST)</span>
+                <span class="meta-value mono">2026-08-27 06:12:41 IST</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Scan Completed (IST)</span>
+                <span class="meta-value mono">2026-08-27 06:12:44 IST</span>
+            </div>
+        </div>
+
+        <h2>Recovered Forensic Artifacts (3)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Filename</th>
+                    <th>Format</th>
+                    <th>Original Size</th>
+                    <th>Extent Bytes</th>
+                    <th>Recovery Conf</th>
+                    <th>ML Prediction</th>
+                    <th>ML Conf</th>
+                    <th>Method</th>
+                    <th>Modified (IST)</th>
+                    <th>SHA-256 Digest</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td class="mono"><strong>xfs:ino128</strong></td>
+            <td>xfs_deleted_ino_128.txt</td>
+            <td><span class="badge type">TXT</span></td>
+            <td>8 B</td>
+            <td>4096 B</td>
+            <td><span class="badge conf-rec">Medium (75%)</span></td>
+            <td>TXT</td>
+            <td><span class="badge conf-ml">62.7%</span></td>
+            <td>xfs zero link anomaly</td>
+            <td class="mono">2026-08-27 04:21:20 IST</td>
+            <td class="mono hash-cell">8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b</td>
+        </tr>
+        
+        <tr>
+            <td class="mono"><strong>xfs:ino129</strong></td>
+            <td>xfs_deleted_ino_129.txt</td>
+            <td><span class="badge type">TXT</span></td>
+            <td>8 B</td>
+            <td>4096 B</td>
+            <td><span class="badge conf-rec">Medium (75%)</span></td>
+            <td>TXT</td>
+            <td><span class="badge conf-ml">61.0%</span></td>
+            <td>xfs zero link anomaly</td>
+            <td class="mono">2026-08-27 04:21:30 IST</td>
+            <td class="mono hash-cell">6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913</td>
+        </tr>
+        
+        <tr>
+            <td class="mono"><strong>xfs:ino130</strong></td>
+            <td>xfs_deleted_ino_130.txt</td>
+            <td><span class="badge type">TXT</span></td>
+            <td>8 B</td>
+            <td>4096 B</td>
+            <td><span class="badge conf-rec">Medium (75%)</span></td>
+            <td>TXT</td>
+            <td><span class="badge conf-ml">62.2%</span></td>
+            <td>xfs zero link anomaly</td>
+            <td class="mono">2026-08-27 04:21:40 IST</td>
+            <td class="mono hash-cell">d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f</td>
+        </tr>
+        
+            </tbody>
+        </table>
+
+        <h2>Cryptographic Chain of Custody (Ed25519 Blockchain Ledger)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Index</th>
+                    <th>Block Type</th>
+                    <th>Timestamp (IST)</th>
+                    <th>Block Hash</th>
+                    <th>Previous Hash</th>
+                    <th>Public Key</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td class="mono">#0</td>
+            <td><span class="badge type">GENESIS</span></td>
+            <td class="mono">2026-08-27 06:12:42 IST</td>
+            <td class="mono hash-cell">84783a860fef76ab22dcda1baa382461bc6203490e94c5a906dc37fc1db1c517</td>
+            <td class="mono hash-cell">0000000000000000000000000000000000000000000000000000000000000000</td>
+            <td class="mono hash-cell">992a49f9f9a1646c...</td>
+        </tr>
+        
+        <tr>
+            <td class="mono">#1</td>
+            <td><span class="badge type">FULL_RECOVERY</span></td>
+            <td class="mono">2026-08-27 06:12:42 IST</td>
+            <td class="mono hash-cell">d3183bbee9b3898514f79c4bdf2e0fc59a9f9cf591f20e24c475c9d05f3db206</td>
+            <td class="mono hash-cell">84783a860fef76ab22dcda1baa382461bc6203490e94c5a906dc37fc1db1c517</td>
+            <td class="mono hash-cell">992a49f9f9a1646c...</td>
+        </tr>
+        
+        <tr>
+            <td class="mono">#2</td>
+            <td><span class="badge type">FULL_RECOVERY</span></td>
+            <td class="mono">2026-08-27 06:12:42 IST</td>
+            <td class="mono hash-cell">5b5d8ad761d0528a2f92ab8b5d8ad00e5759f2be74a171687cb31c91328266e8</td>
+            <td class="mono hash-cell">d3183bbee9b3898514f79c4bdf2e0fc59a9f9cf591f20e24c475c9d05f3db206</td>
+            <td class="mono hash-cell">992a49f9f9a1646c...</td>
+        </tr>
+        
+        <tr>
+            <td class="mono">#3</td>
+            <td><span class="badge type">FULL_RECOVERY</span></td>
+            <td class="mono">2026-08-27 06:12:42 IST</td>
+            <td class="mono hash-cell">28124ba33612e8bf5c249a435631abaa80d8b1289f6154c5330224fe56d23777</td>
+            <td class="mono hash-cell">5b5d8ad761d0528a2f92ab8b5d8ad00e5759f2be74a171687cb31c91328266e8</td>
+            <td class="mono hash-cell">992a49f9f9a1646c...</td>
+        </tr>
+        
+            </tbody>
+        </table>
+
+        <div class="footer">
+            FirSeFile Forensic Recovery Engine • Cryptographic Integrity Verified • Report Generated in India Standard Time (IST)
+        </div>
+    </div>
+</body>
+</html>

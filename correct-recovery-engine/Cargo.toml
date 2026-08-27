@@ -1,0 +1,18 @@
+[package]
+name = "xfs-recovery-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[lib]
+name = "xfs_recovery_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xfs-recovery-engine"
+path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "deny"
+warnings = "deny"

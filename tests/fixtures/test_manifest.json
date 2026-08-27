@@ -5,8 +5,8 @@
     {
       "image_file": "xfs_deleted_synthetic.img",
       "filesystem": "xfs",
-      "total_size": 2097152,
-      "sha256": "5b75fcb903b8384d25b7a13d5482f6b1a82abd2529ebf78c43033114e9599259",
+      "total_size": 16777216,
+      "sha256": "050bdc29ec6f9f22fd199c28c4017e680c98e17042697edb2a5440f8805d3879",
       "files": [
         {
           "file_id": "xfs:ino128",
@@ -27,8 +27,8 @@
           "expected_recovery": true
         },
         {
-          "file_id": "xfs:carved_0x64000",
-          "filename": "carved_0x64000.jpg",
+          "file_id": "xfs:carved_0x32000",
+          "filename": "carved_0x32000.jpg",
           "file_type": "jpg",
           "expected_size": 149,
           "expected_sha256": "39a289617bc0a782029e26556afb8639742661894f2d8bc462f18bd7e53e6e57",
@@ -36,8 +36,8 @@
           "expected_recovery": true
         },
         {
-          "file_id": "xfs:carved_0x66000",
-          "filename": "carved_0x66000.zip",
+          "file_id": "xfs:carved_0x34000",
+          "filename": "carved_0x34000.zip",
           "file_type": "zip",
           "expected_size": 114,
           "expected_sha256": "75e12031b245fd25955c7d6e5c9be7f23b30208a04b45e93e61e7ada09e68022",

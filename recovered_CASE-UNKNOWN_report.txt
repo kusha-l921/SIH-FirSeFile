@@ -1,0 +1,19 @@
+FIRSEFILE FORENSIC RECOVERY REPORT
+=================================
+Case ID:        CASE-UNKNOWN
+Investigator:   
+Filesystem:     XFS
+Evidence Image: /home/kushal/Desktop/SIH-FirSeFile/gui_kushal_123_test.img
+Image SHA-256:  146d759cd077f6dcdcba39a94517acc22dd6de937b7d0cf4543bbf21b43d1966
+Files Recovered: 3
+
+-- Recovered Files --
+[xfs:ino128] xfs_deleted_ino_128.txt | txt | 8 bytes | SHA256: 8d06d9cef147428f0a9c6667020c4e8a42b68273203cd4c908a6a41f6ec26f9b
+[xfs:ino129] xfs_deleted_ino_129.txt | txt | 8 bytes | SHA256: 6ff889eda5fb8cbbdd05528c2ceaac77ceb64c0778aa799fc842606d49014913
+[xfs:ino130] xfs_deleted_ino_130.txt | txt | 8 bytes | SHA256: d27fbdabdb7fd8ce256aa969e2a3c7849562a468a803bf49dd7aaa2412deb03f
+
+-- Recovery Ledger --
+#0 | 2026-08-26T22:54:44.266726+00:00 | Hash: d9d07a85e0104ad0d7d2e82675783d3b5374a638c75e47c6319cd274ae1d69e2
+#1 | 2026-08-26T22:54:44.272702+00:00 | Hash: bd1e6d97cc462c6a008ed7c402e25e41fa860e9c07be07335a45a5536154dfd8
+#2 | 2026-08-26T22:54:44.272993+00:00 | Hash: 437ce6b6f2b6d564c803b06fce6ae8561b7cd955f52341702ef2b030e2232b7c
+#3 | 2026-08-26T22:54:44.273225+00:00 | Hash: ac9582745920714fa7666f94bf308186364fe7c8c95325d6db53078e16a01e87

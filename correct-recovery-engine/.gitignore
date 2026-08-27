@@ -1,0 +1,83 @@
+# =========================
+# Rust
+# =========================
+
+/target/
+**/*.rs.bk
+
+# =========================
+# Environment / Secrets
+# =========================
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# =========================
+# IDE / Editor
+# =========================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS Files
+# =========================
+
+.DS_Store
+Thumbs.db
+
+# =========================
+# Temporary / Backup Files
+# =========================
+
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*~
+
+# =========================
+# Forensic / Disk Images
+# =========================
+
+*.img
+*.raw
+*.dd
+*.dmg
+*.iso
+*.qcow
+*.qcow2
+*.vmdk
+*.vdi
+
+# =========================
+# Logs
+# =========================
+
+*.log
+
+# =========================
+# Coverage / Profiling
+# =========================
+
+coverage/
+lcov.info
+*.profraw
+*.profdata
+
+# =========================
+# Local Scratch / Generated Data
+# =========================
+
+/scratch/
+/tmp//target

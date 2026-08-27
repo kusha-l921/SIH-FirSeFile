@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 acquisition         = { path = "../src/acquisition" }
-xfs-recovery-engine = { path = "../src/recovery/xfs" }
+xfs-recovery-engine = { path = "../correct-recovery-engine" }
 
 [lib]
 name = "integration_tests"

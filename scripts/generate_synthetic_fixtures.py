@@ -85,17 +85,17 @@ SAMPLE_SCRIPT = (
 def build_xfs_synthetic_image(out_path: Path) -> dict:
     """
     Constructs a valid XFS v4 image containing superblock, AG geometry,
-    and deleted inode candidates.
+    INOBT/BNOBT/CNTBT allocation records, and deleted inode candidates.
     """
-    img_size = 2 * 1024 * 1024  # 2 MiB
-    img = bytearray(img_size)
+    img_size = 16 * 1024 * 1024  # 16 MiB (XFS standard minimum AG size)
+    img = bytearray(4096 * 64)   # Buffer holding headers, metadata, and data blocks
 
     # 1. Superblock (512 bytes at offset 0)
     struct.pack_into(">I", img, 0, 0x58465342)      # magic 'XFSB'
     struct.pack_into(">I", img, 4, 4096)            # block_size = 4096
-    struct.pack_into(">Q", img, 8, img_size // 4096)# dblocks = 512
+    struct.pack_into(">Q", img, 8, img_size // 4096)# dblocks = 4096
     struct.pack_into(">Q", img, 56, 128)            # rootino = 128
-    struct.pack_into(">I", img, 84, 512)            # agblocks = 512
+    struct.pack_into(">I", img, 84, 4096)           # agblocks = 4096
     struct.pack_into(">I", img, 88, 1)              # agcount = 1
     struct.pack_into(">H", img, 100, 4)             # version = 4 (v4)
     struct.pack_into(">H", img, 102, 512)           # sectsize = 512
@@ -105,11 +105,62 @@ def build_xfs_synthetic_image(out_path: Path) -> dict:
     img[121] = 9   # sectlog
     img[122] = 8   # inodelog
     img[123] = 4   # inopblog
-    img[124] = 9   # agblklog
+    img[124] = 12  # agblklog
 
-    # 2. Inode chunk at block 16 (offset 65536)
-    # Put deleted PDF file at inode 128 (offset 65536)
-    ino_offset = 65536
+    # AGF at sector 1 (512)
+    struct.pack_into(">I", img, 512 + 0, 0x58414746) # XAGF
+    struct.pack_into(">I", img, 512 + 4, 1)          # version 1
+    struct.pack_into(">I", img, 512 + 8, 0)          # seqno 0
+    struct.pack_into(">I", img, 512 + 12, 4096)      # length 4096
+    struct.pack_into(">I", img, 512 + 16, 4)         # bnobt root block 4
+    struct.pack_into(">I", img, 512 + 20, 5)         # cntbt root block 5
+    struct.pack_into(">I", img, 512 + 28, 1)         # bnobt level 1
+    struct.pack_into(">I", img, 512 + 32, 1)         # cntbt level 1
+    struct.pack_into(">I", img, 512 + 52, 3000)      # freeblks
+    struct.pack_into(">I", img, 512 + 56, 3000)      # longest
+
+    # AGI at sector 2 (1024)
+    struct.pack_into(">I", img, 1024 + 0, 0x58414749) # XAGI
+    struct.pack_into(">I", img, 1024 + 4, 1)          # version 1
+    struct.pack_into(">I", img, 1024 + 8, 0)          # seqno 0
+    struct.pack_into(">I", img, 1024 + 12, 4096)      # length 4096
+    struct.pack_into(">I", img, 1024 + 16, 64)        # count 64
+    struct.pack_into(">I", img, 1024 + 20, 3)         # inobt root block 3
+    struct.pack_into(">I", img, 1024 + 24, 1)         # level 1
+    struct.pack_into(">I", img, 1024 + 28, 62)        # freecount 62
+    for b in range(64):
+        struct.pack_into(">I", img, 1024 + 40 + b * 4, 0xFFFFFFFF)
+
+    # Block 3 (12288) - INOBT leaf
+    struct.pack_into(">I", img, 12288 + 0, 0x49414254) # IABT
+    struct.pack_into(">H", img, 12288 + 4, 0)          # level 0 (leaf)
+    struct.pack_into(">H", img, 12288 + 6, 1)          # numrecs 1
+    struct.pack_into(">I", img, 12288 + 8, 0xFFFFFFFF) # leftsib
+    struct.pack_into(">I", img, 12288 + 12, 0xFFFFFFFF)# rightsib
+    struct.pack_into(">I", img, 12288 + 16 + 0, 128)   # startino 128
+    struct.pack_into(">I", img, 12288 + 16 + 4, 62)    # freecount 62
+    struct.pack_into(">Q", img, 12288 + 16 + 8, 0xFFFFFFFFFFFFFFFC) # slots 0 and 1 allocated with nlink=0
+
+    # Block 4 (16384) - BNOBT leaf
+    struct.pack_into(">I", img, 16384 + 0, 0x41425442) # ABTB
+    struct.pack_into(">H", img, 16384 + 4, 0)
+    struct.pack_into(">H", img, 16384 + 6, 1)
+    struct.pack_into(">I", img, 16384 + 8, 0xFFFFFFFF)
+    struct.pack_into(">I", img, 16384 + 12, 0xFFFFFFFF)
+    struct.pack_into(">I", img, 16384 + 16 + 0, 32)    # startblock 32
+    struct.pack_into(">I", img, 16384 + 16 + 4, 3000)
+
+    # Block 5 (20480) - CNTBT leaf
+    struct.pack_into(">I", img, 20480 + 0, 0x41425443) # ABTC
+    struct.pack_into(">H", img, 20480 + 4, 0)
+    struct.pack_into(">H", img, 20480 + 6, 1)
+    struct.pack_into(">I", img, 20480 + 8, 0xFFFFFFFF)
+    struct.pack_into(">I", img, 20480 + 12, 0xFFFFFFFF)
+    struct.pack_into(">I", img, 20480 + 16 + 0, 32)    # startblock 32
+    struct.pack_into(">I", img, 20480 + 16 + 4, 3000)
+
+    # 2. Inode chunk at block 8 (offset 32768)
+    ino_offset = 32768
     data_block_offset = 131072  # block 32
 
     # Write PDF data into data block
@@ -120,21 +171,18 @@ def build_xfs_synthetic_image(out_path: Path) -> dict:
     struct.pack_into(">H", img, ino_offset + 2, 0o100644)     # mode: regular file 0644
     img[ino_offset + 4] = 2                                   # version 2
     img[ino_offset + 5] = 2                                   # format: extents (XFS_DINODE_FMT_EXTENTS)
-    struct.pack_into(">H", img, ino_offset + 6, 0)            # nlink = 0 (DELETED!)
+    struct.pack_into(">I", img, ino_offset + 16, 0)           # nlink = 0 (DELETED!)
     struct.pack_into(">I", img, ino_offset + 8, 1000)         # uid = 1000
     struct.pack_into(">I", img, ino_offset + 12, 1000)        # gid = 1000
-    struct.pack_into(">Q", img, ino_offset + 16, len(SAMPLE_PDF)) # size
-    struct.pack_into(">Q", img, ino_offset + 24, 1)           # nblocks = 1
+    struct.pack_into(">Q", img, ino_offset + 56, len(SAMPLE_PDF)) # size
+    struct.pack_into(">Q", img, ino_offset + 64, 1)           # nblocks = 1
+    struct.pack_into(">I", img, ino_offset + 76, 1)           # nextents = 1
     struct.pack_into(">I", img, ino_offset + 32, 1700000000)  # atime sec
     struct.pack_into(">I", img, ino_offset + 40, 1700000002)  # mtime sec
     struct.pack_into(">I", img, ino_offset + 48, 1700000001)  # ctime sec
     img[ino_offset + 90] = 0                                  # forkoff = 0
 
     # Write extent descriptor in data fork (offset ino_offset + 100)
-    # BMBT extent record: [flag(1) | startoff(54) | startblock(52) | blockcount(21)] = 128 bits
-    # startoff = 0, startblock = 32 (data_block_offset / 4096), blockcount = 1
-    # Bits [0..63]: (0 << 63) | (0 << 9) | ((32 >> 43) & 0x1FF) = 0
-    # Bits [64..127]: ((32 & 0x7FFFFFFFFFF) << 21) | (1 & 0x1FFFFF) = (32 << 21) | 1 = 67108865
     struct.pack_into(">Q", img, ino_offset + 100, 0)
     struct.pack_into(">Q", img, ino_offset + 108, (32 << 21) | 1)
 
@@ -147,11 +195,12 @@ def build_xfs_synthetic_image(out_path: Path) -> dict:
     struct.pack_into(">H", img, ino2_offset + 2, 0o100644)
     img[ino2_offset + 4] = 2
     img[ino2_offset + 5] = 2
-    struct.pack_into(">H", img, ino2_offset + 6, 0)            # nlink = 0 (DELETED!)
+    struct.pack_into(">I", img, ino2_offset + 16, 0)          # nlink = 0 (DELETED!)
     struct.pack_into(">I", img, ino2_offset + 8, 1000)
     struct.pack_into(">I", img, ino2_offset + 12, 1000)
-    struct.pack_into(">Q", img, ino2_offset + 16, len(SAMPLE_PNG))
-    struct.pack_into(">Q", img, ino2_offset + 24, 1)
+    struct.pack_into(">Q", img, ino2_offset + 56, len(SAMPLE_PNG))
+    struct.pack_into(">Q", img, ino2_offset + 64, 1)
+    struct.pack_into(">I", img, ino2_offset + 76, 1)
     struct.pack_into(">I", img, ino2_offset + 32, 1700000100)
     struct.pack_into(">I", img, ino2_offset + 40, 1700000102)
     struct.pack_into(">I", img, ino2_offset + 48, 1700000101)
@@ -161,14 +210,17 @@ def build_xfs_synthetic_image(out_path: Path) -> dict:
     struct.pack_into(">Q", img, ino2_offset + 100, 0)
     struct.pack_into(">Q", img, ino2_offset + 108, (33 << 21) | 1)
 
-    # Also place raw carvings in unallocated space at block 100 (offset 409600)
-    carve_offset = 409600
+    # Also place raw carvings in unallocated space at block 50 (offset 204800)
+    carve_offset = 204800
     img[carve_offset:carve_offset + len(SAMPLE_JPG)] = SAMPLE_JPG
     img[carve_offset + 8192:carve_offset + 8192 + len(SAMPLE_ZIP)] = SAMPLE_ZIP
     img[carve_offset + 16384:carve_offset + 16384 + len(SAMPLE_SQLITE)] = SAMPLE_SQLITE
     img[carve_offset + 24576:carve_offset + 24576 + len(SAMPLE_SCRIPT)] = SAMPLE_SCRIPT
 
-    out_path.write_bytes(img)
+    with open(out_path, "wb") as f:
+        f.truncate(img_size)
+    with open(out_path, "r+b") as f:
+        f.write(img)
 
     return {
         "image_file": str(out_path.name),
@@ -403,8 +455,8 @@ def main():
     print(f"Created: {xfs_path} ({xfs_info['total_size']} bytes)")
     print(f"Created: {btrfs_path} ({btrfs_info['total_size']} bytes)")
     print(f"Created: {manifest_path}")
-    print("Synthetic fixtures generated successfully.")
-
+generate_fixtures = main
 
 if __name__ == "__main__":
     main()
+

@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "src/acquisition",
-    "src/recovery/xfs",
+    "correct-recovery-engine",
     "integration_tests",
 ]
 resolver = "2"
